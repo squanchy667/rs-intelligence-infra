@@ -196,35 +196,20 @@ resource "aws_security_group" "rds" {
   tags = { Name = "${local.name}-rds-sg" }
 }
 
-# Shared SG for interface VPC endpoints (ECR, Secrets Manager, Bedrock).
-# Allow HTTPS from ECS tasks so AWS SDK calls work through the endpoint.
-resource "aws_security_group" "vpc_endpoints" {
-  name        = "${local.name}-vpce-sg"
-  description = "Interface VPC endpoints - HTTPS from ECS SG"
-  vpc_id      = aws_vpc.this.id
-
-  ingress {
-    description     = "HTTPS from ECS tasks"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = { Name = "${local.name}-vpce-sg" }
-}
-
 ############################################################################
-# VPC endpoints — cut NAT data-transfer costs for AWS API calls
-#   Gateway:   S3
-#   Interface: ECR (api + dkr), Secrets Manager, Bedrock Runtime, CloudWatch Logs
+# VPC endpoints - S3 Gateway only (free).
+#
+# The 5 interface endpoints (ecr.api, ecr.dkr, secretsmanager,
+# bedrock-runtime, logs) were removed on 2026-04-23 after the first-deploy
+# cost review: each interface endpoint costs $0.013/hr PER AZ, so 5 × 2 AZs
+# = ~$95/mo of pure always-on cost. At POC scale the NAT data-transfer
+# fallback ($0.045/GB) costs ~$0.01/mo, so removing them saves ~$94/mo with
+# no operational difference. See
+# dara-v2-docs/deployment/staging-deploy-2026-04-23.md § "Cost optimization".
+#
+# The Gateway S3 endpoint is FREE (no per-hour charge) and meaningfully
+# reduces NAT data egress for ECR image layer reads on every deploy, so
+# it's kept.
 ############################################################################
 
 resource "aws_vpc_endpoint" "s3" {
@@ -234,26 +219,4 @@ resource "aws_vpc_endpoint" "s3" {
   route_table_ids   = [aws_route_table.private.id]
 
   tags = { Name = "${local.name}-s3-endpoint" }
-}
-
-locals {
-  interface_endpoints = {
-    ecr_api         = "ecr.api"
-    ecr_dkr         = "ecr.dkr"
-    secretsmanager  = "secretsmanager"
-    bedrock_runtime = "bedrock-runtime"
-    logs            = "logs"
-  }
-}
-
-resource "aws_vpc_endpoint" "interface" {
-  for_each            = local.interface_endpoints
-  vpc_id              = aws_vpc.this.id
-  service_name        = "com.amazonaws.${var.aws_region}.${each.value}"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = { Name = "${local.name}-${each.key}-endpoint" }
 }

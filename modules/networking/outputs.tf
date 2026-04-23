@@ -38,7 +38,5 @@ output "rds_security_group_id" {
   description = "Security group for the RDS PostgreSQL instance."
 }
 
-output "vpc_endpoints_security_group_id" {
-  value       = aws_security_group.vpc_endpoints.id
-  description = "Security group attached to interface VPC endpoints."
-}
+# vpc_endpoints_security_group_id removed along with the interface VPC
+# endpoints on 2026-04-23 (cost optimisation — see main.tf comment).
