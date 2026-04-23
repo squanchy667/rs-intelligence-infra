@@ -47,11 +47,16 @@ data "aws_iam_policy_document" "backend_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # Accept both sub-claim formats — the ref form for plain pushes and the
+    # environment form that GH emits when the workflow job has
+    # `environment: <name>`. Our deploy workflows use `environment: staging`
+    # for secret scoping, so the environment form is what we actually see.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
         "repo:${var.github_org}/${var.backend_repo}:ref:refs/heads/${var.deploy_branch}",
+        "repo:${var.github_org}/${var.backend_repo}:environment:${var.deploy_branch}",
       ]
     }
   }
@@ -146,11 +151,14 @@ data "aws_iam_policy_document" "frontend_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # Same as the backend — accept both ref-form and environment-form sub
+    # claims so `environment: staging` in the workflow works.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
         "repo:${var.github_org}/${var.frontend_repo}:ref:refs/heads/${var.deploy_branch}",
+        "repo:${var.github_org}/${var.frontend_repo}:environment:${var.deploy_branch}",
       ]
     }
   }
