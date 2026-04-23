@@ -65,3 +65,20 @@ output "ecr_repository_arn" {
   value       = module.ecr.repository_arn
   description = "ECR repository ARN (for IAM policies)."
 }
+
+# ── Secrets (T059) ───────────────────────────────────────────────────
+
+output "rds_password_secret_arn" {
+  value       = module.secrets.rds_password_secret_arn
+  description = "ARN of the RDS master-password secret."
+}
+
+output "jwt_secret_arn" {
+  value       = module.secrets.jwt_secret_arn
+  description = "ARN of the JWT signing-key secret."
+}
+
+output "nadlan_recaptcha_key_secret_arn" {
+  value       = module.secrets.nadlan_recaptcha_key_secret_arn
+  description = "ARN of the nadlan reCAPTCHA-key secret."
+}
