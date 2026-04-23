@@ -234,10 +234,16 @@ resource "aws_ecs_task_definition" "api" {
   execution_role_arn = aws_iam_role.task_execution.arn
   task_role_arn      = aws_iam_role.task.arn
 
-  # Runtime platform — Linux on the default AMD64 arch (chromium in the
-  # Dockerfile only ships AMD64 binaries for Debian slim).
+  # Runtime platform - ARM64/Graviton.
+  # Rationale: operator's build machine is Apple Silicon (arm64), so
+  # `docker build` produces an arm64-only image by default. Fargate Graviton
+  # runs the same arch natively -> no cross-compile needed, AND ~20% cheaper
+  # per vCPU-hour than X86_64 Fargate. Debian slim + chromium + libpq5 all
+  # ship arm64 packages so the Dockerfile is unchanged.
+  # If you later switch to a GitHub-hosted linux/amd64 runner for CI,
+  # either flip this back to X86_64 or build with `docker buildx --platform linux/arm64`.
   runtime_platform {
-    cpu_architecture        = "X86_64"
+    cpu_architecture        = "ARM64"
     operating_system_family = "LINUX"
   }
 
