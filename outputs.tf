@@ -170,3 +170,39 @@ output "database_url_secret_arn" {
   value       = module.ecs.database_url_secret_arn
   description = "ARN of the composed DATABASE_URL secret."
 }
+
+# ── Scheduling (T065) ────────────────────────────────────────────────
+
+output "daily_sync_rule_name" {
+  value       = module.scheduling.daily_sync_rule_name
+  description = "EventBridge rule name for the daily sync (null if disabled)."
+}
+
+output "weekly_report_rule_name" {
+  value       = module.scheduling.weekly_report_rule_name
+  description = "EventBridge rule name for the weekly report (null if disabled)."
+}
+
+# ── Monitoring (T066 infra half) ─────────────────────────────────────
+
+output "alerts_topic_arn" {
+  value       = module.monitoring.alerts_topic_arn
+  description = "SNS topic future alarms can publish to."
+}
+
+# ── CI/CD (T063 + T064 IAM half) ─────────────────────────────────────
+
+output "github_backend_role_arn" {
+  value       = module.cicd.backend_role_arn
+  description = "Backend deploy role ARN — set as AWS_DEPLOY_ROLE_ARN secret in the dara-v2 repo's `staging` environment."
+}
+
+output "github_frontend_role_arn" {
+  value       = module.cicd.frontend_role_arn
+  description = "Frontend deploy role ARN — set as AWS_DEPLOY_ROLE_ARN secret in the dara-v2-ui repo's `staging` environment."
+}
+
+output "github_oidc_provider_arn" {
+  value       = module.cicd.oidc_provider_arn
+  description = "GitHub OIDC provider ARN (one per AWS account — import if account already has it)."
+}

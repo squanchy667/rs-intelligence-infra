@@ -119,3 +119,52 @@ module "ecs" {
   rds_password_secret_arn         = module.secrets.rds_password_secret_arn
   ecs_read_policy_json            = module.secrets.ecs_read_policy_json
 }
+
+module "scheduling" {
+  source = "./modules/scheduling"
+
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+
+  ecs_cluster_arn             = module.ecs.cluster_arn
+  ecs_task_definition_arn     = module.ecs.task_definition_arn
+  ecs_task_execution_role_arn = module.ecs.task_execution_role_arn
+  ecs_task_role_arn           = module.ecs.task_role_arn
+
+  private_subnet_ids     = module.networking.private_subnet_ids
+  ecs_security_group_id  = module.networking.ecs_security_group_id
+
+  enable_daily_sync    = var.scheduling_enable_daily_sync
+  enable_weekly_report = var.scheduling_enable_weekly_report
+}
+
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  project_name = var.project_name
+  environment  = var.environment
+  alert_email  = var.alert_email
+
+  alb_arn_suffix              = module.alb.alb_arn_suffix
+  alb_target_group_arn_suffix = module.alb.target_group_arn_suffix
+
+  ecs_cluster_name = module.ecs.cluster_name
+  ecs_service_name = module.ecs.service_name
+}
+
+module "cicd" {
+  source = "./modules/cicd"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  ecr_repository_arn          = module.ecr.repository_arn
+  ecs_cluster_arn             = module.ecs.cluster_arn
+  ecs_service_arn_pattern     = "arn:aws:ecs:${var.aws_region}:*:service/${module.ecs.cluster_name}/*"
+  ecs_task_execution_role_arn = module.ecs.task_execution_role_arn
+  ecs_task_role_arn           = module.ecs.task_role_arn
+
+  frontend_bucket_arn         = "arn:aws:s3:::${module.storage.bucket_name}"
+  cloudfront_distribution_arn = module.storage.cloudfront_distribution_arn
+}

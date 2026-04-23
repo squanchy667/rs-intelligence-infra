@@ -26,3 +26,15 @@ variable "alert_email" {
   type        = string
   default     = "ofekaviv9@gmail.com"
 }
+
+variable "scheduling_enable_daily_sync" {
+  description = "Enable the EventBridge daily-sync cron (T065)."
+  type        = bool
+  default     = true
+}
+
+variable "scheduling_enable_weekly_report" {
+  description = "Enable the opt-in EventBridge weekly-report cron (T065)."
+  type        = bool
+  default     = false
+}

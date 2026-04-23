@@ -20,7 +20,9 @@ locals {
 resource "aws_s3_bucket" "frontend" {
   bucket = local.bucket_name
 
-  tags = { Name = local.bucket_name }
+  # Tags are managed by aws_s3_bucket_tagging (below) so the CloudFront
+  # distribution ID can be tagged onto it after the distribution exists.
+  # Provider default_tags still apply automatically.
 }
 
 resource "aws_s3_bucket_versioning" "frontend" {
@@ -176,4 +178,20 @@ data "aws_iam_policy_document" "s3_frontend" {
 resource "aws_s3_bucket_policy" "frontend" {
   bucket = aws_s3_bucket.frontend.id
   policy = data.aws_iam_policy_document.s3_frontend.json
+}
+
+# Tag the bucket with the distribution ID so the frontend CI can resolve it
+# at deploy time without a Terraform output shipped as a GitHub secret.
+resource "aws_s3_bucket_tagging" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  tag_set {
+    key   = "Name"
+    value = local.bucket_name
+  }
+
+  tag_set {
+    key   = "CloudFrontDistributionId"
+    value = aws_cloudfront_distribution.this.id
+  }
 }
