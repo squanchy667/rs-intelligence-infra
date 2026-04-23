@@ -116,3 +116,20 @@ output "alb_arn" {
   value       = module.alb.alb_arn
   description = "ALB ARN."
 }
+
+# ── Storage + CDN (T058) ─────────────────────────────────────────────
+
+output "frontend_bucket_name" {
+  value       = module.storage.bucket_name
+  description = "S3 bucket hosting the Next.js static build."
+}
+
+output "cloudfront_distribution_id" {
+  value       = module.storage.cloudfront_distribution_id
+  description = "CloudFront distribution ID (for CI invalidations)."
+}
+
+output "cloudfront_domain_name" {
+  value       = module.storage.cloudfront_domain_name
+  description = "Public *.cloudfront.net URL — same origin for frontend + /api/*."
+}

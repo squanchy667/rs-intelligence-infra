@@ -85,3 +85,11 @@ module "alb" {
   public_subnet_ids = module.networking.public_subnet_ids
   security_group_id = module.networking.alb_security_group_id
 }
+
+module "storage" {
+  source = "./modules/storage"
+
+  project_name = var.project_name
+  environment  = var.environment
+  alb_dns_name = module.alb.alb_dns_name
+}
