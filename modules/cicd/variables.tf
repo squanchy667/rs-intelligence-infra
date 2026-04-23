@@ -28,8 +28,8 @@ variable "frontend_repo" {
 
 variable "deploy_branch" {
   type        = string
-  default     = "main"
-  description = "Only workflow runs on this branch are allowed to assume the deploy roles."
+  default     = "staging"
+  description = "Only workflow runs on this branch are allowed to assume the deploy roles. Current model: staging branch → staging env; when you spin up prod, either raise `environment=production` in a second root or split deploy_branch per env."
 }
 
 # ── Backend wiring ────────────────────────────────────────────────────
