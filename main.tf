@@ -93,3 +93,29 @@ module "storage" {
   environment  = var.environment
   alb_dns_name = module.alb.alb_dns_name
 }
+
+module "ecs" {
+  source = "./modules/compute/ecs"
+
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+
+  private_subnet_ids    = module.networking.private_subnet_ids
+  ecs_security_group_id = module.networking.ecs_security_group_id
+
+  ecr_repository_url = module.ecr.repository_url
+  ecr_repository_arn = module.ecr.repository_arn
+
+  alb_target_group_arn = module.alb.target_group_arn
+
+  rds_endpoint        = module.database.endpoint
+  rds_database_name   = module.database.database_name
+  rds_master_username = module.database.master_username
+  rds_master_password = module.secrets.rds_password
+
+  jwt_secret_arn                  = module.secrets.jwt_secret_arn
+  nadlan_recaptcha_key_secret_arn = module.secrets.nadlan_recaptcha_key_secret_arn
+  rds_password_secret_arn         = module.secrets.rds_password_secret_arn
+  ecs_read_policy_json            = module.secrets.ecs_read_policy_json
+}

@@ -133,3 +133,40 @@ output "cloudfront_domain_name" {
   value       = module.storage.cloudfront_domain_name
   description = "Public *.cloudfront.net URL — same origin for frontend + /api/*."
 }
+
+# ── ECS (T060) ───────────────────────────────────────────────────────
+
+output "ecs_cluster_name" {
+  value       = module.ecs.cluster_name
+  description = "ECS cluster name (used by aws ecs execute-command)."
+}
+
+output "ecs_service_name" {
+  value       = module.ecs.service_name
+  description = "ECS service name."
+}
+
+output "ecs_task_definition_family" {
+  value       = module.ecs.task_definition_family
+  description = "Task-definition family (CI registers new revisions here)."
+}
+
+output "ecs_task_execution_role_arn" {
+  value       = module.ecs.task_execution_role_arn
+  description = "Task execution role ARN."
+}
+
+output "ecs_task_role_arn" {
+  value       = module.ecs.task_role_arn
+  description = "Task role ARN (Bedrock + SSM + optional S3)."
+}
+
+output "ecs_log_group_name" {
+  value       = module.ecs.log_group_name
+  description = "CloudWatch log group for the API task."
+}
+
+output "database_url_secret_arn" {
+  value       = module.ecs.database_url_secret_arn
+  description = "ARN of the composed DATABASE_URL secret."
+}
