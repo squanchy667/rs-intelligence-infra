@@ -53,3 +53,15 @@ output "rds_security_group_id" {
   value       = module.networking.rds_security_group_id
   description = "RDS security group."
 }
+
+# ── ECR (T053) ───────────────────────────────────────────────────────
+
+output "ecr_repository_url" {
+  value       = module.ecr.repository_url
+  description = "ECR repository URL for the FastAPI image."
+}
+
+output "ecr_repository_arn" {
+  value       = module.ecr.repository_arn
+  description = "ECR repository ARN (for IAM policies)."
+}

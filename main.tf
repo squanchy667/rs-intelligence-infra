@@ -51,3 +51,10 @@ module "networking" {
   environment  = var.environment
   aws_region   = var.aws_region
 }
+
+module "ecr" {
+  source = "./modules/compute/ecr"
+
+  project_name = var.project_name
+  environment  = var.environment
+}
