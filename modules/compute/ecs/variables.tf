@@ -139,16 +139,16 @@ variable "feature_flags" {
 
 # ── LLM config ────────────────────────────────────────────────────────
 
-variable "bedrock_sonnet_model_id" {
+variable "bedrock_primary_model_id" {
   type        = string
-  default     = "anthropic.claude-haiku-4-5-20251001-v1:0"
-  description = "PRIMARY Bedrock model — passed as BEDROCK_MODEL_ID env var and granted invoke perm in IAM. POC defaults to Haiku 4.5 for cost; variable retains its `sonnet` name because upgrading to `anthropic.claude-sonnet-4-6` is a single tfvars override when narrative quality becomes the priority."
+  default     = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+  description = "PRIMARY Bedrock inference-profile ID — passed as BEDROCK_MODEL_ID to the container. POC defaults to Haiku 4.5 via the EU cross-region profile (newer Anthropic models require an inference profile, not an on-demand foundation-model ID). To upgrade to Sonnet, set to `eu.anthropic.claude-sonnet-4-6` in tfvars."
 }
 
-variable "bedrock_haiku_model_id" {
+variable "bedrock_secondary_model_id" {
   type        = string
-  default     = "anthropic.claude-haiku-4-5-20251001-v1:0"
-  description = "Secondary Bedrock model — same Haiku 4.5 for the POC. Separate variable so IAM grants invoke on both model ARNs (harmless when both equal; lets you swap PRIMARY → Sonnet without a second Terraform apply to update IAM)."
+  default     = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+  description = "Secondary inference-profile ID — same Haiku 4.5 for the POC. Separate variable so IAM grants invoke on both profiles (harmless when equal; lets you swap PRIMARY → Sonnet without re-applying IAM)."
 }
 
 # ── Observability ─────────────────────────────────────────────────────

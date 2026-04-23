@@ -13,13 +13,27 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  name                = "${var.project_name}-${var.environment}"
-  container_name      = "api"
-  log_group_name      = "/ecs/${local.name}"
-  account_id          = data.aws_caller_identity.current.account_id
-  bedrock_model_arns  = [
-    "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_sonnet_model_id}",
-    "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_haiku_model_id}",
+  name           = "${var.project_name}-${var.environment}"
+  container_name = "api"
+  log_group_name = "/ecs/${local.name}"
+  account_id     = data.aws_caller_identity.current.account_id
+
+  # Newer Anthropic models in eu-west-1 are only invokable via a cross-region
+  # inference profile (e.g. `eu.anthropic.claude-haiku-4-5-...`). The IAM
+  # policy must allow InvokeModel on BOTH the inference-profile ARN AND the
+  # underlying foundation-model ARNs in every region the profile can route
+  # to. The wildcard on region covers eu-west-1 / eu-west-3 / eu-central-1
+  # / eu-north-1 without pinning.
+  bedrock_invoke_arns = [
+    # Inference profile ARNs — what the API actually calls.
+    "arn:aws:bedrock:${var.aws_region}:${local.account_id}:inference-profile/${var.bedrock_primary_model_id}",
+    "arn:aws:bedrock:${var.aws_region}:${local.account_id}:inference-profile/${var.bedrock_secondary_model_id}",
+    # Underlying foundation models (cross-region). Scoped to the Anthropic
+    # model families we use; broad region pattern because the profile picks
+    # the region at runtime based on capacity.
+    "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-*",
+    "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-*",
+    "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6*",
   ]
 }
 
@@ -145,7 +159,7 @@ data "aws_iam_policy_document" "task_bedrock" {
       "bedrock:InvokeModel",
       "bedrock:InvokeModelWithResponseStream",
     ]
-    resources = local.bedrock_model_arns
+    resources = local.bedrock_invoke_arns
   }
 }
 
@@ -242,7 +256,7 @@ resource "aws_ecs_task_definition" "api" {
       environment = [
         { name = "AWS_REGION",           value = var.aws_region },
         { name = "LLM_PROVIDER",         value = "bedrock" },
-        { name = "BEDROCK_MODEL_ID",     value = var.bedrock_sonnet_model_id },
+        { name = "BEDROCK_MODEL_ID",     value = var.bedrock_primary_model_id },
         { name = "FF_QUERY_BUILDER",     value = tostring(var.feature_flags.query_builder) },
         { name = "FF_BACKTEST",          value = tostring(var.feature_flags.backtest) },
         { name = "FF_PIPELINE",          value = tostring(var.feature_flags.pipeline) },
