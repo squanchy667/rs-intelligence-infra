@@ -65,3 +65,13 @@ module "secrets" {
   project_name = var.project_name
   environment  = var.environment
 }
+
+module "database" {
+  source = "./modules/database"
+
+  project_name       = var.project_name
+  environment        = var.environment
+  private_subnet_ids = module.networking.private_subnet_ids
+  security_group_id  = module.networking.rds_security_group_id
+  master_password    = module.secrets.rds_password
+}

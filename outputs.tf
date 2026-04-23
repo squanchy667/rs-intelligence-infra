@@ -82,3 +82,20 @@ output "nadlan_recaptcha_key_secret_arn" {
   value       = module.secrets.nadlan_recaptcha_key_secret_arn
   description = "ARN of the nadlan reCAPTCHA-key secret."
 }
+
+# ── Database (T056) ──────────────────────────────────────────────────
+
+output "rds_endpoint" {
+  value       = module.database.endpoint
+  description = "RDS host:port (for DATABASE_URL construction)."
+}
+
+output "rds_database_name" {
+  value       = module.database.database_name
+  description = "RDS initial database name."
+}
+
+output "rds_master_username" {
+  value       = module.database.master_username
+  description = "RDS master username."
+}
