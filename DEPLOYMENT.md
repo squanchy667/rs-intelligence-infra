@@ -9,6 +9,10 @@ with profile `rs-intel`, region `eu-west-1`.
 > [`PRODUCTION_CHECKLIST.md`](https://github.com/squanchy667/dara-v2-docs/blob/main/PRODUCTION_CHECKLIST.md)
 > in the docs repo before any real traffic lands on this stack.
 
+> 🧪 **After you finish this runbook**, work through [`SMOKE_TEST.md`](./SMOKE_TEST.md)
+> to verify everything end-to-end. It covers auth, feature flags, report
+> generation, CI round-trips, and the known negative cases.
+
 ## 1. Bootstrap the Terraform backend
 
 Run **once** per AWS account (the S3 bucket + DynamoDB table referenced by
@@ -202,23 +206,22 @@ the password you supplied.
 
 ## 8. Smoke test
 
+See the **[SMOKE_TEST.md](./SMOKE_TEST.md) runbook** — a 13-section
+checklist covering health, auth, feature flags, data + reports, logs,
+alarms, scheduled tasks, ECS Exec, CI/CD round-trip, and negative cases.
+
+Quick sanity bite if you're in a hurry:
+
 ```sh
-# From your laptop
-CF=$(cd rs-intelligence-infra && terraform output -raw cloudfront_domain_name)
+CF=$(terraform output -raw cloudfront_domain_name)
+curl -sS "https://$CF/api/health" | jq .          # 200 with db=true, llm.ok=true
 
-# Healthcheck
-curl "https://$CF/api/health"
-# → {"status":"ok","ollama":"unavailable","model":"..."}
-
-# Login + hit a protected endpoint
-TOKEN=$(curl -s -X POST "https://$CF/api/auth/login" \
+TOKEN=$(curl -sS -X POST "https://$CF/api/auth/login" \
     -H 'Content-Type: application/json' \
     -d '{"email":"ofekaviv9@gmail.com","password":"<the-password>"}' \
     | jq -r .access_token)
-
-curl "https://$CF/api/auth/me" -H "Authorization: Bearer $TOKEN"
-
-# Frontend
+curl -sS "https://$CF/api/auth/me" -H "Authorization: Bearer $TOKEN" | jq .
+# expect: { id, email, name, role="admin" }
 open "https://$CF"
 ```
 
