@@ -1,0 +1,22 @@
+# Terraform state and plan artifacts
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+crash.log
+crash.*.log
+
+# Variable files (keep only .example-named files under source control)
+*.tfvars
+!environments/*/terraform.tfvars
+!*.tfvars.example
+
+# Local env / CLI
+.envrc
+.env
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
