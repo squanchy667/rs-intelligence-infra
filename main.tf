@@ -75,3 +75,13 @@ module "database" {
   security_group_id  = module.networking.rds_security_group_id
   master_password    = module.secrets.rds_password
 }
+
+module "alb" {
+  source = "./modules/compute/alb"
+
+  project_name      = var.project_name
+  environment       = var.environment
+  vpc_id            = module.networking.vpc_id
+  public_subnet_ids = module.networking.public_subnet_ids
+  security_group_id = module.networking.alb_security_group_id
+}

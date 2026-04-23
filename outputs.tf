@@ -99,3 +99,20 @@ output "rds_master_username" {
   value       = module.database.master_username
   description = "RDS master username."
 }
+
+# ── ALB (T057) ───────────────────────────────────────────────────────
+
+output "alb_dns_name" {
+  value       = module.alb.alb_dns_name
+  description = "ALB DNS (used as CloudFront /api/* origin in T058)."
+}
+
+output "alb_target_group_arn" {
+  value       = module.alb.target_group_arn
+  description = "Target group ARN — ECS service (T060) attaches here."
+}
+
+output "alb_arn" {
+  value       = module.alb.alb_arn
+  description = "ALB ARN."
+}
