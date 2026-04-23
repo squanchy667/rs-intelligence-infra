@@ -121,7 +121,7 @@ resource "aws_route_table_association" "private" {
 
 resource "aws_security_group" "alb" {
   name        = "${local.name}-alb-sg"
-  description = "ALB ingress — HTTP/HTTPS from CloudFront/internet"
+  description = "ALB ingress - HTTP/HTTPS from CloudFront/internet"
   vpc_id      = aws_vpc.this.id
 
   ingress {
@@ -152,7 +152,7 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "ecs" {
   name        = "${local.name}-ecs-sg"
-  description = "ECS tasks — container port from ALB only"
+  description = "ECS tasks - container port from ALB only"
   vpc_id      = aws_vpc.this.id
 
   ingress {
@@ -175,7 +175,7 @@ resource "aws_security_group" "ecs" {
 
 resource "aws_security_group" "rds" {
   name        = "${local.name}-rds-sg"
-  description = "RDS — PostgreSQL from ECS only"
+  description = "RDS - PostgreSQL from ECS only"
   vpc_id      = aws_vpc.this.id
 
   ingress {
@@ -200,7 +200,7 @@ resource "aws_security_group" "rds" {
 # Allow HTTPS from ECS tasks so AWS SDK calls work through the endpoint.
 resource "aws_security_group" "vpc_endpoints" {
   name        = "${local.name}-vpce-sg"
-  description = "Interface VPC endpoints — HTTPS from ECS SG"
+  description = "Interface VPC endpoints - HTTPS from ECS SG"
   vpc_id      = aws_vpc.this.id
 
   ingress {
