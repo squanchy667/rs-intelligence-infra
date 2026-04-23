@@ -141,14 +141,14 @@ variable "feature_flags" {
 
 variable "bedrock_sonnet_model_id" {
   type        = string
-  default     = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-  description = "Sonnet model ID — passed as BEDROCK_MODEL_ID env var and used in IAM policy."
+  default     = "anthropic.claude-haiku-4-5-20251001-v1:0"
+  description = "PRIMARY Bedrock model — passed as BEDROCK_MODEL_ID env var and granted invoke perm in IAM. POC defaults to Haiku 4.5 for cost; variable retains its `sonnet` name because upgrading to `anthropic.claude-sonnet-4-6` is a single tfvars override when narrative quality becomes the priority."
 }
 
 variable "bedrock_haiku_model_id" {
   type        = string
-  default     = "anthropic.claude-3-haiku-20240307-v1:0"
-  description = "Haiku model ID — cheap fallback, granted invoke perm in IAM."
+  default     = "anthropic.claude-haiku-4-5-20251001-v1:0"
+  description = "Secondary Bedrock model — same Haiku 4.5 for the POC. Separate variable so IAM grants invoke on both model ARNs (harmless when both equal; lets you swap PRIMARY → Sonnet without a second Terraform apply to update IAM)."
 }
 
 # ── Observability ─────────────────────────────────────────────────────
