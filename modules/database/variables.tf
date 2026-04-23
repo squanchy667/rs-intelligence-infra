@@ -38,8 +38,8 @@ variable "database_name" {
 
 variable "engine_version" {
   type        = string
-  default     = "16.4"
-  description = "PostgreSQL version. Match local Docker (postgres:16)."
+  default     = "16.9"
+  description = "PostgreSQL minor version. 16.4 was removed from eu-west-1; available 16.x at 2026-04-23: 16.6, 16.8, 16.9, 16.10, 16.11, 16.12, 16.13. Going mid-range; auto_minor_version_upgrade is true so the instance floats forward on AWS's maintenance window."
 }
 
 variable "instance_class" {
