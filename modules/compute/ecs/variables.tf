@@ -29,7 +29,7 @@ variable "ecs_security_group_id" {
 
 variable "ecr_repository_url" {
   type        = string
-  description = "ECR repository URL (from ecr module). Image ref is ${this}:${image_tag}."
+  description = "ECR repository URL (from ecr module). Image ref is <repository_url>:<image_tag>."
 }
 
 variable "ecr_repository_arn" {

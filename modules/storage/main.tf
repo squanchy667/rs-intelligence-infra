@@ -182,16 +182,32 @@ resource "aws_s3_bucket_policy" "frontend" {
 
 # Tag the bucket with the distribution ID so the frontend CI can resolve it
 # at deploy time without a Terraform output shipped as a GitHub secret.
-resource "aws_s3_bucket_tagging" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
-
-  tag_set {
-    key   = "Name"
-    value = local.bucket_name
+#
+# Why a null_resource + local-exec instead of the aws_s3_bucket.tags
+# argument: tagging the bucket with the distribution ID creates a cycle
+# (bucket → cloudfront_distribution origin references the bucket already).
+# And `aws_s3_bucket_tagging` isn't a resource in the hashicorp/aws
+# provider — the split-out-resources pattern covers versioning, CORS,
+# policy, etc. but not tagging. Running the CLI out-of-band breaks the
+# cycle: the bucket and the distribution both exist by the time this
+# fires, and `aws s3api put-bucket-tagging` merges rather than
+# replaces so provider default_tags still apply.
+resource "null_resource" "frontend_bucket_tag_cloudfront_id" {
+  triggers = {
+    bucket          = aws_s3_bucket.frontend.id
+    distribution_id = aws_cloudfront_distribution.this.id
   }
 
-  tag_set {
-    key   = "CloudFrontDistributionId"
-    value = aws_cloudfront_distribution.this.id
+  provisioner "local-exec" {
+    command = <<-EOT
+      aws s3api put-bucket-tagging \
+        --bucket "${aws_s3_bucket.frontend.id}" \
+        --tagging 'TagSet=[{Key=CloudFrontDistributionId,Value=${aws_cloudfront_distribution.this.id}}]'
+    EOT
   }
+
+  depends_on = [
+    aws_cloudfront_distribution.this,
+    aws_s3_bucket_policy.frontend,
+  ]
 }
