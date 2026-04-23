@@ -21,3 +21,35 @@ output "aws_region" {
   value       = var.aws_region
   description = "AWS region."
 }
+
+# ── Networking (T052) ────────────────────────────────────────────────
+
+output "vpc_id" {
+  value       = module.networking.vpc_id
+  description = "VPC ID."
+}
+
+output "public_subnet_ids" {
+  value       = module.networking.public_subnet_ids
+  description = "Public subnets (ALB, NAT)."
+}
+
+output "private_subnet_ids" {
+  value       = module.networking.private_subnet_ids
+  description = "Private subnets (ECS, RDS)."
+}
+
+output "alb_security_group_id" {
+  value       = module.networking.alb_security_group_id
+  description = "ALB security group."
+}
+
+output "ecs_security_group_id" {
+  value       = module.networking.ecs_security_group_id
+  description = "ECS security group."
+}
+
+output "rds_security_group_id" {
+  value       = module.networking.rds_security_group_id
+  description = "RDS security group."
+}

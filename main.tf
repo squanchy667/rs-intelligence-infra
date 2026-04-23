@@ -39,3 +39,15 @@ provider "aws" {
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
 }
+
+############################################################################
+# Module wiring
+############################################################################
+
+module "networking" {
+  source = "./modules/networking"
+
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+}
