@@ -9,7 +9,7 @@ definition with an overridden container command.
 
 | Rule | Cron (UTC) | Israel time | Override command | Default |
 |------|------------|-------------|------------------|---------|
-| daily-sync | `cron(0 3 * * ? *)` | 06:00 IST | `python -m dara_v2 sync --all` | enabled |
+| daily-sync | `cron(0 3 * * ? *)` | 06:00 IST | `python -m dara_v2 sync --all` | **disabled** |
 | weekly-report | `cron(0 5 ? * SUN *)` | 08:00 Sunday | `python -m dara_v2 report --all-cities` | **disabled** |
 
 ## Toggling
@@ -59,16 +59,19 @@ aws ecs run-task \
     --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","dara_v2","sync","--all"]}]}'
 ```
 
-## Why the POC starts with enable_daily_sync=true
+## Why daily-sync defaults to OFF
 
-The operator's current plan is **manual laptop-side syncs** — meaning the
-cron adds no value day-to-day. It's enabled anyway because:
+The API task is sized 0.25 vCPU / 512 MB (your choice — POC cost control).
+`sync --all` executes the nadlan collector, which spawns chromium via
+Selenium to solve the reCAPTCHA. Chromium + chromedriver + Python easily
+touches 400 MB, and 512 MB total means an in-process sync OOMs the container.
 
-1. It's free to leave ticking (EventBridge + ECS RunTask only charge on
-   actual invocation; a failing task still costs cents)
-2. It exercises the scheduled-sync code path daily, surfacing regressions
-   early (image breaks, IAM drifts, RDS creds rotated, etc.)
-3. When you're ready to stop the manual loop, there's nothing to deploy —
-   you just stop uploading fresh seeds
+**Enable this rule only after one of:**
 
-If you'd rather save the ~$1/month: flip `enable_daily_sync=false`.
+1. Bumping the API task to 0.5 vCPU / 1 GB (cheapest fix, ~$11/mo extra)
+2. Creating a second task definition with its own sizing for scheduled
+   sync, and pointing the event target at it (scope: ~30 min of work,
+   cleaner architecturally)
+
+Until then: sync runs **on the laptop**, data flows into RDS via the
+T062 `seed-staging` CLI. See DEPLOYMENT.md for the weekly-refresh loop.

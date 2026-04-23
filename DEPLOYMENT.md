@@ -3,6 +3,12 @@
 The order below is the happy path for a clean AWS account. AWS CLI configured
 with profile `rs-intel`, region `eu-west-1`.
 
+> ⚠ **This runbook stands up the STAGING environment.** It has intentional
+> shortcuts (HTTP ALB, single-AZ RDS, legacy endpoints unauthenticated,
+> `CORS_ALLOW_ORIGINS=*`). See
+> [`PRODUCTION_CHECKLIST.md`](https://github.com/squanchy667/dara-v2-docs/blob/main/PRODUCTION_CHECKLIST.md)
+> in the docs repo before any real traffic lands on this stack.
+
 ## 1. Bootstrap the Terraform backend
 
 Run **once** per AWS account (the S3 bucket + DynamoDB table referenced by
@@ -90,14 +96,18 @@ deployment: `aws ecs update-service --cluster rs-intelligence-staging --service 
 
 ## 6. Seed the database
 
-Data flow during the POC: **run sync locally** against the local Docker
+> **Schema is managed by Alembic.** The API container runs
+> `alembic upgrade head` on startup via `docker-entrypoint.sh`, so on first
+> boot RDS already has every table. You only need to load the data.
+
+Data flow during the POC: **run `sync` locally** against the local Docker
 PostgreSQL, export, then restore into RDS via ECS Exec.
 
 ```sh
 # On your laptop, against local Docker DB
 cd dara-v2
 docker compose up -d postgres
-python -m dara_v2 init-db
+python -m dara_v2 migrate            # alembic upgrade head
 python -m dara_v2 sync --city חדרה
 python -m dara_v2 sync --city ירושלים
 python -m dara_v2 sync --city אופקים
@@ -135,10 +145,45 @@ aws ecs execute-command \
 python -m dara_v2 seed-staging --source s3://<your-bucket>/staging-seed.sql.gz
 ```
 
-`seed-staging` runs `init-db` first (idempotent), then downloads + gunzips
-and applies the INSERTs. Our seed SQL wraps everything in `BEGIN`/`COMMIT`
-and resets SERIAL sequences at the end — safe to re-run as you refresh
-the snapshot weekly.
+`seed-staging` runs `alembic upgrade head` first (idempotent — no-op if the
+container entrypoint already ran it), then downloads + gunzips and applies
+the INSERTs. The seed SQL wraps everything in `BEGIN`/`COMMIT` and resets
+SERIAL sequences at the end — safe to re-run as you refresh the snapshot
+weekly.
+
+### Schema migrations going forward
+
+```sh
+# 1. Change a model in dara-v2/dara_v2/models.py
+# 2. Autogenerate a migration against your local DB:
+cd dara-v2
+python -m dara_v2 migrate           # bring local to head first
+alembic revision --autogenerate -m "add X column"
+# Review the generated file in alembic/versions/, edit if needed, commit.
+
+# 3. Push to main → CI builds + deploys → container entrypoint runs
+#    `alembic upgrade head` at start → new schema is live.
+# 4. (If the migration alters existing rows) re-export seed on your laptop
+#    and re-run seed-staging.
+```
+
+To inspect the current RDS revision:
+
+```sh
+# Inside an ECS Exec shell
+python -m dara_v2 db-current
+# 0001 (head)
+```
+
+**Bypass migrations on container start** (for a diagnostic shell):
+
+```sh
+aws ecs run-task ... --overrides '{"containerOverrides":[{
+    "name":"api",
+    "environment":[{"name":"SKIP_MIGRATIONS","value":"1"}],
+    "command":["/bin/sh"]
+}]}'
+```
 
 ## 7. Create the initial admin user
 

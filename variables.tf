@@ -28,9 +28,9 @@ variable "alert_email" {
 }
 
 variable "scheduling_enable_daily_sync" {
-  description = "Enable the EventBridge daily-sync cron (T065)."
+  description = "Enable the EventBridge daily-sync cron (T065). OFF by default — the API task (0.25 vCPU / 512 MB) OOMs if the nadlan Selenium flow runs in-process. Flip to true after sizing up or splitting sync into its own task def."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "scheduling_enable_weekly_report" {

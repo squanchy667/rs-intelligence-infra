@@ -55,8 +55,8 @@ variable "ecs_security_group_id" {
 
 variable "enable_daily_sync" {
   type        = bool
-  default     = true
-  description = "Daily sync --all at 03:00 UTC. Disable if you're running syncs manually (POC flow)."
+  default     = false
+  description = "Daily sync --all at 03:00 UTC. Off by default — enabling it runs `sync --all` INSIDE the API container, which spawns chromium (nadlan Selenium) and will OOM the 0.25 vCPU / 512 MB task. Turn on only after bumping the task to 0.5 vCPU / 1 GB or splitting sync into its own task def."
 }
 
 variable "daily_sync_schedule" {
