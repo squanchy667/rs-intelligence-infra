@@ -118,6 +118,8 @@ module "ecs" {
   nadlan_recaptcha_key_secret_arn = module.secrets.nadlan_recaptcha_key_secret_arn
   rds_password_secret_arn         = module.secrets.rds_password_secret_arn
   ecs_read_policy_json            = module.secrets.ecs_read_policy_json
+
+  seed_bucket_arn = var.seed_bucket_arn
 }
 
 module "scheduling" {

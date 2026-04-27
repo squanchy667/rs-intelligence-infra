@@ -38,3 +38,9 @@ variable "scheduling_enable_weekly_report" {
   type        = bool
   default     = false
 }
+
+variable "seed_bucket_arn" {
+  description = "Optional S3 bucket ARN granted s3:GetObject for the ECS task role. Used by T062 `dara-v2 seed-staging --source s3://...`. Leave empty to skip."
+  type        = string
+  default     = ""
+}
