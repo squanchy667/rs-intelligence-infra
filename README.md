@@ -74,14 +74,13 @@ CloudFront (automatic HTTPS, default *.cloudfront.net URL)
 
 ## Task map
 
-| Task | Module / File | Status |
-|------|---------------|--------|
-| T045 | Root + backend + module skeleton | ✅ this commit |
-| T052 | modules/networking | pending |
-| T053 | modules/compute (ECR) | pending |
-| T056 | modules/database | pending |
-| T057 | modules/compute (ALB) | pending |
-| T058 | modules/storage | pending |
-| T059 | modules/secrets | pending |
-| T060 | modules/compute (ECS) | pending |
-| T065 | modules/scheduling | pending |
+✅ **All modules complete and deployed** (staging went live 2026-04-23; now deep-deep-frozen — see [`LIFECYCLE.md`](./LIFECYCLE.md)). T045 + T052–T065 are all built; each module has its own README under `modules/`. The original per-task `pending` list was stale (it never advanced past T045); git history covers the build sequence.
+
+| Module | Path |
+|---|---|
+| networking (VPC, subnets, NAT) | `modules/networking` |
+| compute (ECR, ALB, ECS Fargate) | `modules/compute` |
+| database (RDS PostgreSQL) | `modules/database` |
+| storage (S3 + CloudFront) | `modules/storage` |
+| secrets (Secrets Manager) | `modules/secrets` |
+| scheduling (EventBridge cron) | `modules/scheduling` |
