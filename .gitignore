@@ -17,6 +17,16 @@ crash.*.log
 .env
 .DS_Store
 
+# Dev-box SSH private key (terraform output) — never commit
+dev_box_key.pem
+*.pem
+
 # Editor
 .vscode/
 .idea/
+
+# Deep-deep-sleep snapshot dumps. Small dumps are intended to live in the repo
+# (offline DR copy); the sleep script warns past DEEP_DEEP_DUMP_MAX_MB (default
+# 50). These two patterns ignore in-flight / oversized artifacts only.
+snapshots/dumps/*.tmp
+snapshots/dumps/*.skipped
