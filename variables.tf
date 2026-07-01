@@ -44,3 +44,9 @@ variable "seed_bucket_arn" {
   type        = string
   default     = ""
 }
+
+variable "restore_from_snapshot_id" {
+  description = "Pass-through to module.database. Set by scripts/deep-deep-wake.sh via `-var=restore_from_snapshot_id=...` to recreate RDS from a manual snapshot. Null on normal applies. Lifecycle.ignore_changes on the DB resource means later applies don't see drift if this is cleared."
+  type        = string
+  default     = null
+}

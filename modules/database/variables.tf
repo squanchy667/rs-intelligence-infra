@@ -77,3 +77,9 @@ variable "maintenance_window" {
   default     = "Mon:04:00-Mon:05:00"
   description = "UTC maintenance window, staggered after backup window."
 }
+
+variable "restore_from_snapshot_id" {
+  type        = string
+  default     = null
+  description = "If set, the DB instance is created by restoring this manual snapshot identifier (or full snapshot ARN) instead of starting empty. Used by scripts/deep-deep-wake.sh after deep-deep-sleep. lifecycle.ignore_changes on snapshot_identifier prevents drift if this var is later cleared, so subsequent terraform applies don't replace the DB."
+}

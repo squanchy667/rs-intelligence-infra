@@ -203,7 +203,9 @@ resource "aws_iam_role_policy" "task_exec_ssm" {
 }
 
 # Optional: S3 read for seed restore (T062). Only attached when a bucket ARN
-# is provided.
+# is provided. Also grants PutObject under snapshots/ for the deep-deep-sleep
+# pg_dump uploader (the temp Fargate task launched by scripts/deep-deep-sleep.sh
+# reuses this task role rather than provisioning a parallel one-off role).
 data "aws_iam_policy_document" "task_seed_s3" {
   count = var.seed_bucket_arn != "" ? 1 : 0
 
@@ -212,6 +214,13 @@ data "aws_iam_policy_document" "task_seed_s3" {
     effect    = "Allow"
     actions   = ["s3:GetObject", "s3:ListBucket"]
     resources = [var.seed_bucket_arn, "${var.seed_bucket_arn}/*"]
+  }
+
+  statement {
+    sid       = "WriteSnapshotDumps"
+    effect    = "Allow"
+    actions   = ["s3:PutObject", "s3:DeleteObject"]
+    resources = ["${var.seed_bucket_arn}/snapshots/*"]
   }
 }
 

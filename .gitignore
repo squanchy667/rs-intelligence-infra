@@ -30,3 +30,7 @@ dev_box_key.pem
 # 50). These two patterns ignore in-flight / oversized artifacts only.
 snapshots/dumps/*.tmp
 snapshots/dumps/*.skipped
+
+# local terraform/db state + dumps (never commit)
+state/
+snapshots/

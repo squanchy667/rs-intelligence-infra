@@ -35,6 +35,11 @@ resource "aws_db_instance" "this" {
   engine_version = var.engine_version
   instance_class = var.instance_class
 
+  # When restoring from a manual snapshot (deep-deep-wake), AWS ignores
+  # db_name / username / password on creation — they come from the snapshot.
+  # Storage class, instance class, parameter group, networking still apply.
+  snapshot_identifier = var.restore_from_snapshot_id
+
   # Storage — gp3 with autoscaling headroom
   allocated_storage     = var.allocated_storage_gb
   max_allocated_storage = var.max_allocated_storage_gb
@@ -75,5 +80,16 @@ resource "aws_db_instance" "this" {
 
   tags = {
     Name = "${local.name}-postgres"
+  }
+
+  # snapshot_identifier is a create-time-only attribute. After the instance
+  # is restored, clearing var.restore_from_snapshot_id would otherwise force
+  # a replace (and lose the data we just restored). Ignoring it makes the
+  # variable a one-shot creation hint.
+  # password is also ignored: when restoring from snapshot AWS keeps the
+  # snapshot's password, which may differ from the current Secrets Manager
+  # value until rotated.
+  lifecycle {
+    ignore_changes = [snapshot_identifier, password]
   }
 }
