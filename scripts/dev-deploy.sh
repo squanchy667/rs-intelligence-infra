@@ -1,19 +1,35 @@
 #!/usr/bin/env bash
-# Deploy the current code to the Lightsail dev box (artifact-push model):
-# build the UI static export + the amd64 API image locally, ship them + the
+# Deploy the current code to a Lightsail box (artifact-push model): build the
+# UI static export + the amd64 API image locally, ship them + the
 # compose/Caddy files to the box, and `docker compose up -d`.
 #
-# Prereqs: terraform applied in environments/dev; docker buildx; npm.
-# Usage:   scripts/dev-deploy.sh
+# Prereqs: terraform applied in the target's TF root; docker buildx; npm.
+# Usage:   scripts/dev-deploy.sh <feature|dev>
 set -euo pipefail
+
+# --- box roles --------------------------------------------------------------
+# feature → environments/dev2 : the FEATURE box. New/experimental work
+#           (Bat Yam, tenders, …) deploys here first, from any local tree.
+# dev     → environments/dev  : the shared DEV box QA tests on
+#           (https://54-195-65-131.sslip.io). Only gets cherry-picked,
+#           pushed staging code + blessed seed dumps (see DEV.md promotion
+#           policy). Directory predates the split — do not rename it; its
+#           S3 state key must stay put.
+# -----------------------------------------------------------------------------
+TARGET="${1:-}"
+case "$TARGET" in
+  feature) TF_DIR="environments/dev2" ;;
+  dev)     TF_DIR="environments/dev" ;;
+  *)       echo "usage: dev-deploy.sh <feature|dev>" >&2; exit 1 ;;
+esac
 
 INFRA_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$INFRA_DIR/.." && pwd)"
 BE="$ROOT/dara-v2"
 UI="$ROOT/dara-v2-ui"
-DEV_TF="$INFRA_DIR/environments/dev"
-KEY="$INFRA_DIR/dev_box_key.pem"
-IMG_TAR="/tmp/dara-api-dev.tar.gz"
+DEV_TF="$INFRA_DIR/$TF_DIR"
+KEY="$INFRA_DIR/${TARGET}_box_key.pem"
+IMG_TAR="/tmp/dara-api-${TARGET}.tar.gz"
 
 echo "==> Reading terraform outputs"
 IP="$(terraform -chdir="$DEV_TF" output -raw static_ip)"
