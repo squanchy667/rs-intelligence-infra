@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Cut a "blessed" seed dump artifact from the current LOCAL dara_v2 DB.
 #
-# Blessed dumps are the ONLY data source the shared dev (QA) box should ever
-# be reseeded from (scripts/dev-seed.sh dev <dump.sql.gz>) — never a live
+# Blessed dumps are the ONLY data source the `test` (review) box should ever
+# be reseeded from (scripts/dev-seed.sh test <dump.sql.gz>) — never a live
 # local pg_dump, which may carry mid-campaign local experiments. Run this
 # whenever local data reaches a state worth promoting, then hand the printed
-# path to `dev-seed.sh dev`.
+# path to `dev-seed.sh test`.
 #
 # Prereqs: local Postgres reachable at localhost:5432 (PGPASSWORD=dara); pg_dump; psql.
 # Usage:   scripts/make-seed.sh
