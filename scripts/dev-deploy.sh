@@ -86,7 +86,9 @@ IMG_TAR="/tmp/dara-api-${TARGET}.tar.gz"
 BUILD_BE="$BE"
 BUILD_UI="$UI"
 BUILD_TMP=""
-cleanup() { [ -n "$BUILD_TMP" ] && rm -rf "$BUILD_TMP"; }
+# `|| true`: with BUILD_TMP empty (target=dev) the [ -n ] test fails, and a
+# failing EXIT trap under set -e turns a successful deploy into exit 1.
+cleanup() { { [ -n "$BUILD_TMP" ] && rm -rf "$BUILD_TMP"; } || true; }
 trap cleanup EXIT
 
 if [ "$TARGET" = "test" ]; then
