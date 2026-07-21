@@ -122,15 +122,26 @@ IP="$(terraform -chdir="$DEV_TF" output -raw static_ip)"
 terraform -chdir="$DEV_TF" output -raw private_key_pem > "$KEY"
 chmod 600 "$KEY"
 SSH="ssh -i $KEY -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null"
-# Public hostnames via sslip.io (resolves the embedded IP → Caddy auto-HTTPS).
-# Two aliases per box: the bare-IP host (stable across redeploys) and a
-# target-prefixed host (dev.<ip>.sslip.io / test.<ip>.sslip.io) — the
-# prefixed name is canonical (unambiguous at a glance); the bare-IP host
-# remains a fallback. Both are static-IP-derived, so a recreate just works.
+# Public hostnames. Default: sslip.io (resolves the embedded IP → Caddy
+# auto-HTTPS) with two aliases per box — the bare-IP host (stable across
+# redeploys) and a target-prefixed host (dev.<ip>.sslip.io /
+# test.<ip>.sslip.io). If domain.env exists in the infra root and sets
+# BASE_DOMAIN (e.g. BASE_DOMAIN=rs-intelligence.io), the canonical host
+# becomes <target>.$BASE_DOMAIN and the sslip names stay as fallback
+# aliases. The <target>.$BASE_DOMAIN A record must point at the box's
+# static IP BEFORE deploying — Caddy asks Let's Encrypt for every listed
+# host, and a name with no DNS fails issuance (the others still get certs).
 SITE_HOST="${IP//./-}.sslip.io"
 PREFIXED_HOST="${TARGET}.${SITE_HOST}"
-SITE_ADDRESS="$PREFIXED_HOST $SITE_HOST"
-echo "    box = $IP   host = $PREFIXED_HOST (+ $SITE_HOST)   env = $TARGET"
+[ -f "$INFRA_DIR/domain.env" ] && . "$INFRA_DIR/domain.env"
+if [ -n "${BASE_DOMAIN:-}" ]; then
+  PRIMARY_HOST="${TARGET}.${BASE_DOMAIN}"
+  SITE_ADDRESS="$PRIMARY_HOST $PREFIXED_HOST $SITE_HOST"
+else
+  PRIMARY_HOST="$PREFIXED_HOST"
+  SITE_ADDRESS="$PREFIXED_HOST $SITE_HOST"
+fi
+echo "    box = $IP   host = $PRIMARY_HOST   all-hosts = [$SITE_ADDRESS]   env = $TARGET"
 
 echo "==> Building UI static export (NEXT_PUBLIC_API_URL='' → same-origin /api/)"
 ( cd "$BUILD_UI" && NEXT_PUBLIC_API_URL="" npm run build )
@@ -160,8 +171,8 @@ $SSH ubuntu@"$IP" "cd /opt/dara && gunzip -c dara-api-dev.tar.gz | docker load &
 
 echo "==> Smoke: /api/health (HTTPS may take ~10-30s on first cert issuance)"
 sleep 15
-curl -fsS "https://$PREFIXED_HOST/api/health" && echo "" \
+curl -fsS "https://$PRIMARY_HOST/api/health" && echo "" \
   || curl -fsS "https://$SITE_HOST/api/health" && echo "" \
   || curl -fsS "http://$IP/api/health" && echo " (http; cert still provisioning)" \
   || echo "not ready yet — check 'docker compose logs caddy' on the box"
-echo "==> Done. App: https://$PREFIXED_HOST   (also https://$SITE_HOST)   (seed data with scripts/dev-seed.sh)"
+echo "==> Done. App: https://$PRIMARY_HOST   (aliases: $SITE_ADDRESS)   (seed data with scripts/dev-seed.sh)"
