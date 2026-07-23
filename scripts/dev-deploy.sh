@@ -117,6 +117,18 @@ else
   fi
 fi
 
+# --- version stamp (pipeline-visibility chip) --------------------------------
+# GIT_SHA rides /opt/dara/.env → compose → /api/health "git_sha" → UI chip, so
+# every box self-identifies WHICH code it runs, not just which env it is.
+# test: the pinned `test` branch tip. dev: the working tree's HEAD, -dirty
+# suffixed when tracked files differ (dev deploys are tree-based, not pinned).
+if [ "$TARGET" = "test" ]; then
+  GIT_SHA="$(git -C "$BE" rev-parse --short test)"
+else
+  GIT_SHA="$(git -C "$BE" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  git -C "$BE" diff --quiet HEAD -- 2>/dev/null || GIT_SHA="${GIT_SHA}-dirty"
+fi
+
 echo "==> Reading terraform outputs"
 IP="$(terraform -chdir="$DEV_TF" output -raw static_ip)"
 terraform -chdir="$DEV_TF" output -raw private_key_pem > "$KEY"
@@ -163,8 +175,8 @@ rsync -az -e "$SSH" "$BUILD_BE/docker-compose.dev.yml" ubuntu@"$IP":/opt/dara/do
 rsync -az -e "$SSH" "$BUILD_BE/deploy/Caddyfile" ubuntu@"$IP":/opt/dara/Caddyfile
 rsync -az -e "$SSH" "$IMG_TAR" ubuntu@"$IP":/opt/dara/dara-api-dev.tar.gz
 
-echo "==> Injecting ENV_LABEL=$TARGET into /opt/dara/.env (idempotent; other vars e.g. JWT_SECRET untouched)"
-$SSH ubuntu@"$IP" "touch /opt/dara/.env; (grep -v '^ENV_LABEL=' /opt/dara/.env || true) > /opt/dara/.env.tmp; echo 'ENV_LABEL=$TARGET' >> /opt/dara/.env.tmp; mv /opt/dara/.env.tmp /opt/dara/.env"
+echo "==> Injecting ENV_LABEL=$TARGET GIT_SHA=$GIT_SHA into /opt/dara/.env (idempotent; other vars e.g. JWT_SECRET untouched)"
+$SSH ubuntu@"$IP" "touch /opt/dara/.env; (grep -v -e '^ENV_LABEL=' -e '^GIT_SHA=' /opt/dara/.env || true) > /opt/dara/.env.tmp; { echo 'ENV_LABEL=$TARGET'; echo 'GIT_SHA=$GIT_SHA'; } >> /opt/dara/.env.tmp; mv /opt/dara/.env.tmp /opt/dara/.env"
 
 echo "==> Loading image + starting stack on the box (SITE_ADDRESS='$SITE_ADDRESS' → auto-HTTPS on both hostnames)"
 $SSH ubuntu@"$IP" "cd /opt/dara && gunzip -c dara-api-dev.tar.gz | docker load && SITE_ADDRESS='$SITE_ADDRESS' docker compose up -d"
