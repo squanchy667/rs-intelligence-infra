@@ -178,24 +178,29 @@ repo.
 Both boxes are reachable via **sslip.io** (any subdomain prefix still
 resolves to the embedded IP, so `dev.<ip>.sslip.io` and `<ip>.sslip.io` both
 route to the same box; Caddy auto-provisions a Let's Encrypt cert per
-hostname and redirects 80→443). The target-prefixed hostname is canonical —
-a browser tab is never ambiguous about which box it's pointed at, even
-before the top-bar ENV chip loads:
+hostname and redirects 80→443). When `domain.env` sets `BASE_DOMAIN`, the
+canonical host becomes `<target>.$BASE_DOMAIN` and the sslip names stay as
+fallback aliases (dual-host — LE cert per name).
 
-- **dev (internal)**: canonical `https://dev.<ip-with-dashes>.sslip.io`,
-  fallback `https://<ip-with-dashes>.sslip.io` — derive after first
-  `terraform apply` in `environments/dev2`.
-- **test (review)**: canonical **https://test.54-195-65-131.sslip.io**,
-  fallback **https://54-195-65-131.sslip.io**.
+- **dev (internal)**: still sslip-only today —
+  `https://dev.<ip-with-dashes>.sslip.io` + bare-IP fallback (derive after
+  first `terraform apply` in `environments/dev2`). Optional later:
+  `dev.$BASE_DOMAIN` A → dev box IP.
+- **test (review)**: canonical **https://test.rs-intel.com** (GoDaddy A →
+  `54.195.65.131`, live 2026-07-26). Fallbacks still live:
+  **https://test.54-195-65-131.sslip.io** and
+  **https://54-195-65-131.sslip.io**.
 
-`dev-deploy.sh` computes both hostnames from the box's static IP and passes
-them space-separated as `SITE_ADDRESS` to `docker compose up`, which Caddy's
-`{$SITE_ADDRESS::80}` Caddyfile directive accepts as multiple site addresses
-on one block (`deploy/Caddyfile` in `dara-v2` — no per-host blocks needed).
-A box recreate (new IP) just works — both hostnames re-derive.
+`dev-deploy.sh` reads optional `domain.env` (`BASE_DOMAIN=…`) in the infra
+root, then builds `SITE_ADDRESS` as space-separated hosts and passes it to
+`docker compose up`. Caddy's `{$SITE_ADDRESS::80}` accepts multiple site
+addresses on one block (`deploy/Caddyfile` in `dara-v2`). Keep
+`key_type rsa2048` (legacy-client cipher path).
 
-To use a branded domain instead: point an A record at the static IP and set
-`SITE_ADDRESS=yourdomain.com` (single value overrides the sslip.io pair).
+**Cutover checklist (test):** (1) A record `test.<domain>` → box static IP,
+TTL low; (2) `domain.env` with `BASE_DOMAIN`; (3) deploy or
+`SITE_ADDRESS='…' docker compose up -d --force-recreate caddy`; (4) verify
+LE cert RSA + `/api/health` + dual-host sslip still OK.
 
 ## One-time step on a NEW box: set JWT_SECRET
 
