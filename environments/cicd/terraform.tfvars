@@ -2,9 +2,10 @@ project_name = "rs-intelligence"
 aws_region   = "eu-west-1"
 github_repo  = "squanchy667/dara-v2"
 
-# Set once Ofek picks an address, then re-apply to create the subscription.
-# alert_email = "ofekaviv9@gmail.com"
+alert_email = "ofekaviv9@gmail.com"
 
+# Confirmed 2026-07-30: account has NO existing trail (describe-trails empty),
+# so the dedicated trail is required for the failed-AssumeRole alarm.
 create_cloudtrail = true
 
 # Leave empty unless ssm:resourceTag/DeployEnv propagation doesn't reach a
