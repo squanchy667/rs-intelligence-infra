@@ -134,26 +134,35 @@ IP="$(terraform -chdir="$DEV_TF" output -raw static_ip)"
 terraform -chdir="$DEV_TF" output -raw private_key_pem > "$KEY"
 chmod 600 "$KEY"
 SSH="ssh -i $KEY -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null"
-# Public hostnames. Default: sslip.io (resolves the embedded IP → Caddy
-# auto-HTTPS) with two aliases per box — the bare-IP host (stable across
-# redeploys) and a target-prefixed host (dev.<ip>.sslip.io /
-# test.<ip>.sslip.io). If domain.env exists in the infra root and sets
-# BASE_DOMAIN (e.g. BASE_DOMAIN=rs-intelligence.io), the canonical host
-# becomes <target>.$BASE_DOMAIN and the sslip names stay as fallback
-# aliases. The <target>.$BASE_DOMAIN A record must point at the box's
-# static IP BEFORE deploying — Caddy asks Let's Encrypt for every listed
-# host, and a name with no DNS fails issuance (the others still get certs).
+# Public hostname — CI-3 canonical-host-only cutover (2026-07-30): each box
+# serves EXACTLY ONE hostname; the old space-separated multi-host
+# SITE_ADDRESS (sslip + prefixed-sslip + canonical) is retired, Caddy no
+# longer accepts it. If domain.env exists in the infra root and sets
+# BASE_DOMAIN (e.g. BASE_DOMAIN=rs-intel.com), the canonical host
+# <target>.$BASE_DOMAIN is the ONLY SITE_ADDRESS — its A record must point
+# at the box's static IP BEFORE deploying (Caddy asks Let's Encrypt for
+# exactly that one host now; no DNS = failed issuance, no sslip fallback to
+# fall back on). Without domain.env/BASE_DOMAIN, SITE_ADDRESS falls back to
+# a single sslip.io host for bootstrap purposes only — see the warning below.
 SITE_HOST="${IP//./-}.sslip.io"
 PREFIXED_HOST="${TARGET}.${SITE_HOST}"
 [ -f "$INFRA_DIR/domain.env" ] && . "$INFRA_DIR/domain.env"
 if [ -n "${BASE_DOMAIN:-}" ]; then
   PRIMARY_HOST="${TARGET}.${BASE_DOMAIN}"
-  SITE_ADDRESS="$PRIMARY_HOST $PREFIXED_HOST $SITE_HOST"
+  SITE_ADDRESS="$PRIMARY_HOST"
 else
+  echo "############################################################" >&2
+  echo "# WARNING: no domain.env / BASE_DOMAIN found for this box.  #" >&2
+  echo "# Falling back to a single sslip.io SITE_ADDRESS:           #" >&2
+  echo "#   $PREFIXED_HOST" >&2
+  echo "# Canonical-host mode (CI-3) is the EXPECTED shape for real  #" >&2
+  echo "# boxes. This sslip fallback exists ONLY to bootstrap a box  #" >&2
+  echo "# that has no domain configured yet.                        #" >&2
+  echo "############################################################" >&2
   PRIMARY_HOST="$PREFIXED_HOST"
-  SITE_ADDRESS="$PREFIXED_HOST $SITE_HOST"
+  SITE_ADDRESS="$PREFIXED_HOST"
 fi
-echo "    box = $IP   host = $PRIMARY_HOST   all-hosts = [$SITE_ADDRESS]   env = $TARGET"
+echo "    box = $IP   host = $PRIMARY_HOST   env = $TARGET"
 
 echo "==> Building UI static export (NEXT_PUBLIC_API_URL='' → same-origin /api/)"
 ( cd "$BUILD_UI" && NEXT_PUBLIC_API_URL="" npm run build )
@@ -178,13 +187,14 @@ rsync -az -e "$SSH" "$IMG_TAR" ubuntu@"$IP":/opt/dara/dara-api-dev.tar.gz
 echo "==> Injecting ENV_LABEL=$TARGET GIT_SHA=$GIT_SHA into /opt/dara/.env (idempotent; other vars e.g. JWT_SECRET untouched)"
 $SSH ubuntu@"$IP" "touch /opt/dara/.env; (grep -v -e '^ENV_LABEL=' -e '^GIT_SHA=' /opt/dara/.env || true) > /opt/dara/.env.tmp; { echo 'ENV_LABEL=$TARGET'; echo 'GIT_SHA=$GIT_SHA'; } >> /opt/dara/.env.tmp; mv /opt/dara/.env.tmp /opt/dara/.env"
 
-echo "==> Loading image + starting stack on the box (SITE_ADDRESS='$SITE_ADDRESS' → auto-HTTPS on both hostnames)"
+echo "==> Loading image + starting stack on the box (SITE_ADDRESS='$SITE_ADDRESS' → auto-HTTPS, canonical host only)"
 $SSH ubuntu@"$IP" "cd /opt/dara && gunzip -c dara-api-dev.tar.gz | docker load && SITE_ADDRESS='$SITE_ADDRESS' docker compose up -d"
 
 echo "==> Smoke: /api/health (HTTPS may take ~10-30s on first cert issuance)"
 sleep 15
+# CI-3: probe PRIMARY_HOST only. Non-canonical hosts (sslip aliases, raw IP)
+# are expected to FAIL by design post-cutover (Caddy aborts unknown SNI /
+# HTTP hosts) — no fallback chain to them here anymore.
 curl -fsS "https://$PRIMARY_HOST/api/health" && echo "" \
-  || curl -fsS "https://$SITE_HOST/api/health" && echo "" \
-  || curl -fsS "http://$IP/api/health" && echo " (http; cert still provisioning)" \
-  || echo "not ready yet — check 'docker compose logs caddy' on the box"
-echo "==> Done. App: https://$PRIMARY_HOST   (aliases: $SITE_ADDRESS)   (seed data with scripts/dev-seed.sh)"
+  || echo "not ready yet on https://$PRIMARY_HOST — check 'docker compose logs caddy' on the box. (sslip/raw-IP fallbacks are intentionally NOT probed: CI-3 canonical-host-only makes them fail by design.)"
+echo "==> Done. App: https://$PRIMARY_HOST   (seed data with scripts/dev-seed.sh)"
