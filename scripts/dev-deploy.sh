@@ -35,10 +35,12 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 
 YES=0
+TREE_BUILD=0
 RAW_TARGET=""
 for arg in "$@"; do
   case "$arg" in
     --yes) YES=1 ;;
+    --tree) TREE_BUILD=1 ;;
     *) if [ -z "$RAW_TARGET" ]; then RAW_TARGET="$arg"; fi ;;
   esac
 done
@@ -60,7 +62,9 @@ case "$RAW_TARGET" in
     TARGET="test"
     ;;
   *)
-    echo "usage: dev-deploy.sh <dev|test> [--yes]   (feature = deprecated alias for dev)" >&2
+    echo "usage: dev-deploy.sh <dev|test> [--yes] [--tree]   (feature = deprecated alias for dev)" >&2
+    echo "  builds are BRANCH-PINNED: target 'dev' deploys the 'dev' branch tip, 'test' the 'test' tip." >&2
+    echo "  --tree  (dev only) build the working tree instead, to deploy an un-merged experiment." >&2
     exit 1
     ;;
 esac
@@ -72,61 +76,86 @@ esac
 
 INFRA_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$INFRA_DIR/.." && pwd)"
-BE="$ROOT/dara-v2"
-UI="$ROOT/dara-v2-ui"
+# Repo paths default to the sibling checkouts, but are overridable so a
+# target=dev deploy can build from a WORKTREE instead of the main tree.
+# This matters: the main dara-v2 tree is routinely parked on another
+# session's branch (corridor scan, SV, map work), and a target=dev deploy
+# builds from the working tree — so without this you'd either ship whatever
+# that session had checked out, or have to switch branches under them.
+#   BE=../dara-v2-cicd scripts/dev-deploy.sh dev
+BE="${BE:-$ROOT/dara-v2}"
+UI="${UI:-$ROOT/dara-v2-ui}"
 DEV_TF="$INFRA_DIR/$TF_DIR"
 KEY="$INFRA_DIR/$KEY_NAME"
 IMG_TAR="/tmp/dara-api-${TARGET}.tar.gz"
 
 # --- branch-pinned build source ----------------------------------------------
-# test: never the working tree — archive the `test` branch of both repos into
-#       a throwaway dir. dev: the working tree, with a non-blocking warning if
-#       it isn't on `dev` (Ofek may deliberately deploy an experiment).
+# BOTH targets are branch-pinned (changed 2026-07-30, Ofek): the box always
+# runs its own branch's tip, never whatever happened to be checked out.
+#   target=dev  → archives the `dev` branch tip
+#   target=test → archives the `test` branch tip
+# This is the same contract the CI ladder enforces (deploy-dev.yml builds the
+# sha that was pushed to `dev`), so the manual path and CI can no longer
+# disagree about what "deployed to dev" means. It also makes the deploy immune
+# to which branch a parallel session has the main tree parked on — `git
+# archive <branch>` reads the object store, not the worktree.
+#
+# The workflow this supports: work on a feature branch → merge/push to `dev`
+# when it's ready → deploy (or, once CI is live, the push itself deploys).
+#
+# Escape hatch: `--tree` restores the old target=dev behaviour of building
+# whatever is checked out, for deliberately deploying an un-merged experiment.
+# It refuses on target=test — the review box is never tree-built.
 # ------------------------------------------------------------------------------
 BUILD_BE="$BE"
 BUILD_UI="$UI"
 BUILD_TMP=""
-# `|| true`: with BUILD_TMP empty (target=dev) the [ -n ] test fails, and a
+# `|| true`: with BUILD_TMP empty (--tree) the [ -n ] test fails, and a
 # failing EXIT trap under set -e turns a successful deploy into exit 1.
 cleanup() { { [ -n "$BUILD_TMP" ] && rm -rf "$BUILD_TMP"; } || true; }
 trap cleanup EXIT
 
-if [ "$TARGET" = "test" ]; then
+if [ "$TREE_BUILD" = "1" ]; then
+  if [ "$TARGET" = "test" ]; then
+    echo "error: --tree is not allowed for target=test — the review box is always branch-pinned to 'test'." >&2
+    exit 1
+  fi
+  BE_BRANCH="$(git -C "$BE" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+  UI_BRANCH="$(git -C "$UI" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+  echo "==> target=dev --tree: building the WORKING TREE (dara-v2 on '$BE_BRANCH', dara-v2-ui on '$UI_BRANCH')" >&2
+  echo "    this deploys un-merged work; the box's GIT_SHA will not correspond to a 'dev' commit." >&2
+else
   for repo in "$BE" "$UI"; do
-    if ! git -C "$repo" show-ref --verify --quiet "refs/heads/test"; then
-      echo "error: branch 'test' does not exist in $repo — target=test builds are branch-pinned and refuse to fall back to the working tree." >&2
+    if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$TARGET"; then
+      echo "error: branch '$TARGET' does not exist in $repo — deploys are branch-pinned and refuse to fall back to the working tree (pass --tree to deploy an un-merged experiment to the dev box)." >&2
       exit 1
     fi
   done
-  BUILD_TMP="$(mktemp -d "${TMPDIR:-/tmp}/dara-test-build.XXXXXX")"
+  BUILD_TMP="$(mktemp -d "${TMPDIR:-/tmp}/dara-${TARGET}-build.XXXXXX")"
   BUILD_BE="$BUILD_TMP/dara-v2"
   BUILD_UI="$BUILD_TMP/dara-v2-ui"
   mkdir -p "$BUILD_BE" "$BUILD_UI"
-  echo "==> target=test: branch-pinned build — archiving 'test' branch tip of dara-v2 + dara-v2-ui (never the working tree, which sits on 'dev')"
-  git -C "$BE" archive test | tar -x -C "$BUILD_BE"
-  git -C "$UI" archive test | tar -x -C "$BUILD_UI"
-  echo "    dara-v2@test    → $BUILD_BE   ($(git -C "$BE" rev-parse --short test))"
-  echo "    dara-v2-ui@test → $BUILD_UI   ($(git -C "$UI" rev-parse --short test))"
+  echo "==> target=$TARGET: branch-pinned build — archiving '$TARGET' branch tip of dara-v2 + dara-v2-ui (never the working tree)"
+  git -C "$BE" archive "$TARGET" | tar -x -C "$BUILD_BE"
+  git -C "$UI" archive "$TARGET" | tar -x -C "$BUILD_UI"
+  echo "    dara-v2@$TARGET    → $BUILD_BE   ($(git -C "$BE" rev-parse --short "$TARGET"))"
+  echo "    dara-v2-ui@$TARGET → $BUILD_UI   ($(git -C "$UI" rev-parse --short "$TARGET"))"
   echo "==> npm ci in the archived UI tree (no node_modules in a fresh archive)"
   ( cd "$BUILD_UI" && npm ci )
-else
-  BE_BRANCH="$(git -C "$BE" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
-  UI_BRANCH="$(git -C "$UI" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
-  if [ "$BE_BRANCH" != "dev" ] || [ "$UI_BRANCH" != "dev" ]; then
-    echo "WARNING: target=dev builds from the CURRENT working tree, but dara-v2 is on '$BE_BRANCH' and dara-v2-ui is on '$UI_BRANCH' (expected 'dev' on both). Proceeding — dev deploys are tree-based, not branch-pinned." >&2
-  fi
 fi
 
 # --- version stamp (pipeline-visibility chip) --------------------------------
 # GIT_SHA rides /opt/dara/.env → compose → /api/health "git_sha" → UI chip, so
 # every box self-identifies WHICH code it runs, not just which env it is.
-# test: the pinned `test` branch tip. dev: the working tree's HEAD, -dirty
-# suffixed when tracked files differ (dev deploys are tree-based, not pinned).
-if [ "$TARGET" = "test" ]; then
-  GIT_SHA="$(git -C "$BE" rev-parse --short test)"
-else
+# Branch-pinned builds stamp the branch tip — the sha is then a real commit on
+# that branch, which is what makes the chip answerable by `git log <branch>`.
+# --tree builds stamp the working tree's HEAD, -dirty suffixed when tracked
+# files differ (that sha may not exist on any deployable branch — by design).
+if [ "$TREE_BUILD" = "1" ]; then
   GIT_SHA="$(git -C "$BE" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   git -C "$BE" diff --quiet HEAD -- 2>/dev/null || GIT_SHA="${GIT_SHA}-dirty"
+else
+  GIT_SHA="$(git -C "$BE" rev-parse --short "$TARGET")"
 fi
 
 echo "==> Reading terraform outputs"
