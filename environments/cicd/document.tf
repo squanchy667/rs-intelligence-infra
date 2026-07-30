@@ -36,6 +36,8 @@ locals {
     mv .env.tmp .env
     gunzip -c incoming/api-image.tar.gz | docker load
     SITE_ADDRESS="{{SiteAddress}}" docker compose up -d
+    rm -rf incoming bundle.tar.gz
+    docker image prune -f >/dev/null 2>&1 || true
     i=0
     while [ $i -lt 30 ]; do
       if curl -fsSk --resolve "{{CanonicalHost}}:443:127.0.0.1" "https://{{CanonicalHost}}/api/health" >/dev/null 2>&1; then exit 0; fi
