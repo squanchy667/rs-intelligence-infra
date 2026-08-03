@@ -94,6 +94,15 @@ source instead. Full procedure in the new "Rollback" section below.
   **single canonical-only `SITE_ADDRESS`** host instead of the old
   space-separated sslip+canonical list — see "URL / DNS" below.
 
+**The `verify` job's post-deploy check is now the CI-9 5-layer box
+stability suite** (`dara-v2/scripts/validate-box.sh`, grown 744→1,574
+lines) — same call shape as before (see "Smoke" below), now covering
+TLS/issuer, health+features, fixture-pinned data invariants, UI serving,
+and the auth boundary in one run. Expected-value fixtures live under
+`dara-v2/scripts/fixtures/expected/`, vintage-stamped to whichever blessed
+dump they were derived from. Full writeup:
+`dara-v2-docs/testing/box-stability-suite.md`.
+
 ## Flow
 
 ```
