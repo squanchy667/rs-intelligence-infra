@@ -539,9 +539,9 @@ only standing resource per box is the instance.) Re-create with
 ## Deviations register (CI/CD build, 2026-07-30)
 
 Accepted deviations/known-debts surfaced while building WOs CI-1..CI-4 (spec:
-`PLAN_CICD_GITHUB_SIDEQUEST_2026-07-30.md`). Full ledger, including
+`plans/PLAN_CICD_GITHUB_SIDEQUEST_2026-07-30.md`). Full ledger, including
 parallel-lane watch items and activation-day notes not repeated here:
-`CICD_CONCLUSIONS_2026-07-30.md`.
+`reports/CICD_CONCLUSIONS_2026-07-30.md`.
 
 | # | Deviation | Planned / spec'd | Built instead | Why / debt |
 |---|---|---|---|---|
