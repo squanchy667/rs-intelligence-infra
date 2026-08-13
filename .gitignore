@@ -34,3 +34,6 @@ snapshots/dumps/*.skipped
 # local terraform/db state + dumps (never commit)
 state/
 snapshots/
+
+# terraform plans are generated and may carry resource detail
+*.tfplan
