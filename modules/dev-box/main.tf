@@ -17,7 +17,7 @@ resource "aws_lightsail_key_pair" "dev" {
 # user_data installs Docker Engine + the compose plugin so the box is ready for
 # the artifact-push deploy (scripts/dev-deploy.sh). No app build happens here.
 resource "aws_lightsail_instance" "dev" {
-  name              = "${local.name}-box"
+  name              = coalesce(var.instance_name, "${local.name}-box")
   availability_zone = var.availability_zone
   blueprint_id      = var.blueprint_id
   bundle_id         = var.bundle_id
@@ -50,6 +50,14 @@ resource "aws_lightsail_instance" "dev" {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+
+  # user_data runs once at first boot and Lightsail never returns it, so an
+  # instance imported into state (the 2026-09-14 snapshot-based resize of dev2)
+  # would otherwise plan a destroy+create forever. Ignoring it changes nothing
+  # for a box created by Terraform: the script still runs on creation.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 }
 
 # Stable public IP so the URL / UI api-origin doesn't change across reboots.
@@ -63,22 +71,35 @@ resource "aws_lightsail_static_ip_attachment" "dev" {
 }
 
 # Firewall: SSH + HTTP (+ HTTPS reserved for a future domain/Caddy-TLS).
+# The CIDR lists are spelled out because the provider reads them back
+# (0.0.0.0/0 + ::/0, Lightsail's defaults) and, left implicit in config, plans a
+# destroy+create of this resource on every run (seen 2026-09-14 on dev2; the
+# plan is harmless — a PUT of the same three ports — but it is permanent noise).
 resource "aws_lightsail_instance_public_ports" "dev" {
   instance_name = aws_lightsail_instance.dev.name
 
   port_info {
-    protocol  = "tcp"
-    from_port = 22
-    to_port   = 22
+    protocol          = "tcp"
+    from_port         = 22
+    to_port           = 22
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
   port_info {
-    protocol  = "tcp"
-    from_port = 80
-    to_port   = 80
+    protocol          = "tcp"
+    from_port         = 80
+    to_port           = 80
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
   port_info {
-    protocol  = "tcp"
-    from_port = 443
-    to_port   = 443
+    protocol          = "tcp"
+    from_port         = 443
+    to_port           = 443
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
 }

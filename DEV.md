@@ -1,6 +1,6 @@
 # Dev / test environments — runbook (2026-07-19 env model)
 
-Two **Lightsail** boxes (~$5/mo each, 1 GB), each running the whole app via
+Two **Lightsail** boxes (test: micro_3_0 1 GB ~$7/mo; dev: small_3_0 2 GB ~$12/mo since 2026-09-14), each running the whole app via
 docker-compose: **postgres + api + caddy** (no Ollama). Caddy serves the
 static UI at `/` and proxies `/api/*` to the API on the **same origin**, so
 the UI build (`NEXT_PUBLIC_API_URL=""`) works unchanged.
@@ -492,7 +492,45 @@ tree/branch you need — see "Deploy paths" above. Same CI-outage fallback,
 just aimed backward (check out the commit/tag you want to roll back to,
 then deploy).
 
-## Stop paying (~$5/mo per box while up)
+## Resize a box (2026-09-14: dev2 micro_3_0 → small_3_0)
+
+Lightsail cannot resize an instance in place, and the AWS provider marks
+`bundle_id` as `ForceNew`: changing it in `terraform.tfvars` plans a
+**destroy + create** (fresh Ubuntu from `user_data` — `/opt/dara`, the
+`pgdata` volume, the watchdog, the swapfile, the SSM hybrid registration and
+the Caddy certs all go with the old box). The path that keeps everything is
+snapshot → clone → move the static IP → re-point state, which is what
+`DaraReports/scripts/box_resize_small_2026-09-14.sh` does for dev2:
+
+1. Freeze the old box: `systemctl stop dara-watchdog.timer` (or it restarts
+   the api you are about to stop), `docker compose stop api`, `CHECKPOINT`
+   in postgres. Downtime starts here.
+2. `aws lightsail create-instance-snapshot --instance-name <old> --instance-snapshot-name <name>`
+   and wait for `available` (≈ 15 min for a 40 GB disk with 13 GB used).
+3. `aws lightsail create-instances-from-snapshot ... --bundle-id small_3_0 --key-pair-name rs-intelligence-dev2-key --tags ...`
+   with a NEW name (names are unique and Lightsail cannot rename; the old box
+   keeps the original one until it is deleted).
+4. `put-instance-public-ports` 22/80/443 on the clone — a clone gets Lightsail's
+   default 22+80 only, so 443 would be dark.
+5. `detach-static-ip` / `attach-static-ip` — DNS never changes. `stop-instance`
+   the old box (rollback = start it and move the IP back); delete it only on the
+   CEO's word (a stopped instance still bills its bundle).
+6. On the clone: cloud-init sees a new instance-id and regenerates the SSH host
+   keys (`ssh-keygen -R <ip>`), grows the root filesystem to the new bundle's
+   disk; containers that were running come back on their own, the one you
+   stopped needs `docker compose up -d`; then start the watchdog timer again.
+7. Terraform: set `bundle_id` + `instance_name = "<new name>"` in
+   `terraform.tfvars`, `terraform state rm` the instance / public-ports /
+   static-ip-attachment addresses, `terraform import` the instance (by name)
+   and the attachment (by static-ip name), `terraform apply` re-creates only
+   the public-ports resource (a PUT of the same three ports, nothing
+   destroyed), and `terraform plan` must end at "No changes". The module
+   ignores `user_data` drift for exactly this reason (Lightsail never returns
+   it, so an imported instance would otherwise plan a replacement forever).
+8. Run `validate-box.sh dev` + the browse smoke; the seed, `.env`, users and
+   tokens are the snapshot's, so no reseed unless live moved on meanwhile.
+
+## Stop paying (~$7/mo micro · ~$12/mo small, per box while up)
 
 ```sh
 cd environments/dev2 && terraform destroy -var-file=terraform.tfvars   # dev (internal) box
@@ -532,9 +570,14 @@ only standing resource per box is the instance.) Re-create with
   `dev_box_key.pem` for `test`/`environments/dev`) by the scripts (gitignored
   — do not commit). Kept as historical filenames — see the TF-directory note
   above for why they don't follow the new `dev`/`test` words.
-- Cost surface check: `aws lightsail get-instances` → two `micro_3_0`
-  instances (`rs-intelligence-dev-*` and `rs-intelligence-dev2-*`); no
-  RDS/ALB/NAT/CloudFront created by either env.
+- Cost surface check: `aws lightsail get-instances` → the test box
+  `rs-intelligence-dev-box` (`micro_3_0`, ~$7/mo dualstack) and the dev box
+  `rs-intelligence-dev2-box-2` (`small_3_0`, ~$12/mo, since 2026-09-14);
+  plus, until the CEO deletes them, the STOPPED old `rs-intelligence-dev2-box`
+  (still bills ~$7/mo) and the snapshot
+  `rs-intelligence-dev2-box-pre-resize-20260914` (~$0.05/GB-mo). No
+  RDS/ALB/NAT/CloudFront created by either env. The ~$5/~$10 figures quoted
+  elsewhere are the `*_ipv6_3_0` bundles, which cannot hold a static IPv4.
 
 ## Deviations register (CI/CD build, 2026-07-30)
 
