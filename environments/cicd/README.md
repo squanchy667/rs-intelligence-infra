@@ -100,6 +100,16 @@ terraform -chdir=environments/cicd apply \
 Then repeat the box-side registration command above with the new
 id/code.
 
+The same procedure applies after a **snapshot clone** (box resize,
+`DEV.md` "Resize a box" step 9): the clone inherits the old node's
+`registration` file, but SSM's hardware fingerprint no longer matches, so
+the agent cannot fetch credentials (`MachineFingerprintDoesNotMatch` in
+`/var/log/amazon/ssm/amazon-ssm-agent.log`) and the old `mi-*` shows
+`ConnectionLost`. `-register ... -y` on the clone overwrites the stale
+registration and mints a **new** `mi-*`; update the matching
+`<ENV>_INSTANCE_ID` GitHub variable to it (done 2026-09-14 for dev2:
+`mi-085e8aa05aafec8c3` → `mi-0accf6b376c97df4d`).
+
 ## Var-gated CloudTrail
 
 `create_cloudtrail = true` (default) stands up a dedicated trail + its own

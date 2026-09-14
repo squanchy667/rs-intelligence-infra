@@ -529,6 +529,21 @@ snapshot → clone → move the static IP → re-point state, which is what
    it, so an imported instance would otherwise plan a replacement forever).
 8. Run `validate-box.sh dev` + the browse smoke; the seed, `.env`, users and
    tokens are the snapshot's, so no reseed unless live moved on meanwhile.
+9. **Re-register the SSM agent (2026-09-14 lesson, cost one red `Deploy — dev`).**
+   The clone carries the old box's `/var/lib/amazon/ssm/registration` (its
+   `mi-*`), but the hybrid fingerprint (MAC, disk, hostname, memory hash)
+   changed, so the agent logs `MachineFingerprintDoesNotMatch`, the old node
+   goes `ConnectionLost`, and every `ssm:SendCommand` from the ladder hangs on
+   it. The old activation is spent (`registration_limit = 1`) and usually
+   expired, so: `terraform -chdir=environments/cicd apply
+   -replace='module.<env>.aws_ssm_activation.this'` → `-register` on the clone
+   with the new id/code (runbook: `environments/cicd/README.md`) → a NEW
+   `mi-*` appears Online with the env's role + `DeployEnv` tag → `gh variable
+   set <ENV>_INSTANCE_ID --repo squanchy667/dara-v2 --body <new mi-*>` → rerun
+   the failed deploy. Touch only that env's variable (dev2 → `DEV_INSTANCE_ID`;
+   never guess the test one). The stale node stays listed as ConnectionLost
+   until deregistered (`aws ssm deregister-managed-instance`) — harmless, the
+   deploy role matches on the tag, not the id.
 
 ## Stop paying (~$7/mo micro · ~$12/mo small, per box while up)
 
