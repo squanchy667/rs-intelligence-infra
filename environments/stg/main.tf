@@ -1,5 +1,6 @@
-# Stg environment — self-contained Terraform root. SCAFFOLD ONLY, see
-# README.md — do not apply until the stg box is green-lit.
+# Stg environment — self-contained Terraform root: the team-demo twin of
+# test (https://stg.rs-intel.com). Applied on the CEO's word only — see
+# README.md and DaraReports/plans/PLAN_STG_STANDUP_2026-09-14.md (Phase 2).
 #
 # Separate state key ("stg/terraform.tfstate") so it never collides with
 # dev/dev2/staging/cicd. Same S3 backend bucket + lock table. This root
@@ -43,4 +44,5 @@ module "dev_box" {
   environment       = var.environment
   availability_zone = "${var.aws_region}a"
   bundle_id         = var.bundle_id
+  instance_name     = var.instance_name
 }
