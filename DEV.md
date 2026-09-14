@@ -1,6 +1,6 @@
 # Dev / test environments — runbook (2026-07-19 env model)
 
-Two **Lightsail** boxes (test: micro_3_0 1 GB ~$7/mo; dev: small_3_0 2 GB ~$12/mo since 2026-09-14), each running the whole app via
+Two **Lightsail** boxes (both small_3_0 2 GB ~$12/mo since 2026-09-14 — dev in the morning, test in the afternoon; micro_3_0 1 GB ~$7/mo before), each running the whole app via
 docker-compose: **postgres + api + caddy** (no Ollama). Caddy serves the
 static UI at `/` and proxies `/api/*` to the API on the **same origin**, so
 the UI build (`NEXT_PUBLIC_API_URL=""`) works unchanged.
@@ -492,7 +492,7 @@ tree/branch you need — see "Deploy paths" above. Same CI-outage fallback,
 just aimed backward (check out the commit/tag you want to roll back to,
 then deploy).
 
-## Resize a box (2026-09-14: dev2 micro_3_0 → small_3_0)
+## Resize a box (2026-09-14: dev2 micro_3_0 → small_3_0 in the morning, test the same afternoon — `DaraReports/scripts/box_resize_test_small_2026-09-14.sh` is the test mirror with the lessons folded in)
 
 Lightsail cannot resize an instance in place, and the AWS provider marks
 `bundle_id` as `ForceNew`: changing it in `terraform.tfvars` plans a
@@ -586,11 +586,13 @@ only standing resource per box is the instance.) Re-create with
   — do not commit). Kept as historical filenames — see the TF-directory note
   above for why they don't follow the new `dev`/`test` words.
 - Cost surface check: `aws lightsail get-instances` → the test box
-  `rs-intelligence-dev-box` (`micro_3_0`, ~$7/mo dualstack) and the dev box
-  `rs-intelligence-dev2-box-2` (`small_3_0`, ~$12/mo, since 2026-09-14);
-  plus, until the CEO deletes them, the STOPPED old `rs-intelligence-dev2-box`
-  (still bills ~$7/mo) and the snapshot
-  `rs-intelligence-dev2-box-pre-resize-20260914` (~$0.05/GB-mo). No
+  `rs-intelligence-dev-box-2` (`small_3_0`, ~$12/mo dualstack, since 2026-09-14
+  afternoon) and the dev box `rs-intelligence-dev2-box-2` (`small_3_0`,
+  ~$12/mo, since 2026-09-14 morning); plus, until the CEO deletes them, the
+  STOPPED old `rs-intelligence-dev2-box` and `rs-intelligence-dev-box` (each
+  still bills ~$7/mo) and the two snapshots
+  `rs-intelligence-dev2-box-pre-resize-20260914` /
+  `rs-intelligence-dev-box-pre-resize-20260914` (40 GB each, ~$0.05/GB-mo). No
   RDS/ALB/NAT/CloudFront created by either env. The ~$5/~$10 figures quoted
   elsewhere are the `*_ipv6_3_0` bundles, which cannot hold a static IPv4.
 

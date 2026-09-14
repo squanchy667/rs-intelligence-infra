@@ -42,4 +42,5 @@ module "dev_box" {
   environment       = var.environment
   availability_zone = "${var.aws_region}a"
   bundle_id         = var.bundle_id
+  instance_name     = var.instance_name
 }
