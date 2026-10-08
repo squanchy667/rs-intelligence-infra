@@ -56,13 +56,13 @@ resource "aws_ssm_document" "gha_deploy" {
 
   content = yamlencode({
     schemaVersion = "2.2"
-    description   = "Deploy a GitHub Actions build artifact to an rs-intelligence Lightsail box (dev/test/stg)."
+    description   = "Deploy a GitHub Actions build artifact to an rs-intelligence Lightsail box (dev/stg)."
     parameters = {
       ArtifactUrl = {
         type        = "String"
         description = "Presigned S3 URL for the env-scoped bundle.tar.gz."
         # <account>.s3[.-]eu-west-1.amazonaws.com/<env>/<sha>/bundle.tar.gz?<query>
-        allowedPattern = "^https://rs-intelligence-cicd-artifacts-[0-9]+\\.s3[.-]eu-west-1\\.amazonaws\\.com/(dev|test|stg)/[0-9a-f]{7,40}/bundle\\.tar\\.gz\\?\\S+$"
+        allowedPattern = "^https://rs-intelligence-cicd-artifacts-[0-9]+\\.s3[.-]eu-west-1\\.amazonaws\\.com/(dev|stg)/[0-9a-f]{7,40}/bundle\\.tar\\.gz\\?\\S+$"
       }
       ArtifactSha256 = {
         type           = "String"

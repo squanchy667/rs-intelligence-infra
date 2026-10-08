@@ -6,10 +6,12 @@ as part of building it out.
 
 ## What this root owns
 
-The AWS-side plumbing for the GitHub Actions deploy ladder (`dev` → `test`
-→ `stg`), shared across all three environments:
+The AWS-side plumbing for the GitHub Actions deploy ladder (`dev` → `stg`),
+shared across both environments. The middle `test` rung (`module.test`, its
+roles and SSM activation) was retired 2026-10-08 by JIG-089; its box
+(`environments/dev`, `rs-intelligence-dev-box-2`) was destroyed the same day.
 
-- **Three `module.dev` / `module.test` / `module.stg`** instances of
+- **Two `module.dev` / `module.stg`** instances of
   `../../modules/gha-deploy-env` — each env's GitHub Actions OIDC deploy
   role, SSM box role, and SSM hybrid activation. See that module's README
   for what each instance makes.
@@ -23,8 +25,8 @@ The AWS-side plumbing for the GitHub Actions deploy ladder (`dev` → `test`
   SSM command output, 90-day retention.
 - **CloudTrail + EventBridge + SNS** — an optional dedicated trail
   (`var.create_cloudtrail`) feeding an always-on EventBridge rule that
-  alarms on failed `AssumeRoleWithWebIdentity` calls against any of the
-  three deploy roles.
+  alarms on failed `AssumeRoleWithWebIdentity` calls against either of the
+  two deploy roles.
 
 It does **not** own the dev/dev2/stg Lightsail boxes themselves — those
 stay in their own `environments/*` roots. This root only grants the IAM
@@ -53,7 +55,6 @@ terraform -chdir=environments/cicd apply
 ```
 terraform -chdir=environments/cicd output -json | \
   jq '{dev: {id: .dev_activation_id.value, code: .dev_activation_code.value},
-       test: {id: .test_activation_id.value, code: .test_activation_code.value},
        stg: {id: .stg_activation_id.value, code: .stg_activation_code.value}}'
 ```
 

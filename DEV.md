@@ -1,6 +1,16 @@
-# Dev / test environments — runbook (2026-07-19 env model)
+# Dev / stg environments — runbook (2026-07-19 env model; test retired 2026-10-08)
 
-Two **Lightsail** boxes (both small_3_0 2 GB ~$12/mo since 2026-09-14 — dev in the morning, test in the afternoon; micro_3_0 1 GB ~$7/mo before), each running the whole app via
+> **2026-10-08 — the `test` env is RETIRED (JIG-089).** The ladder is now
+> **`dev → stg`**: `stg` gates on `dev-ok-*` (or an annotated `patch-*`) and
+> keeps `rigor: full`, so the DB-backed pytest leg still runs before stg.
+> The test box (`rs-intelligence-dev-box-2`, TF root `environments/dev`,
+> `test.rs-intel.com`), its CI rung (`deploy-test.yml`), its deploy role /
+> SSM activation (`module.test` in `environments/cicd`) and its SSM node
+> are removed; scripts refuse target `test`. `test-ok-*` tags stay as
+> history and are never minted again. Older sections below that still say
+> `test` are history — where a rule moved, it moved to `stg`.
+
+Two **Lightsail** boxes (both small_3_0 2 GB ~$12/mo — dev since 2026-09-14, stg since its stand-up 2026-09-14; a third, the test box, ran until 2026-10-08), each running the whole app via
 docker-compose: **postgres + api + caddy** (no Ollama). Caddy serves the
 static UI at `/` and proxies `/api/*` to the API on the **same origin**, so
 the UI build (`NEXT_PUBLIC_API_URL=""`) works unchanged.
@@ -15,21 +25,23 @@ CI/CD ladder" right after the env table below.
 | Env | Box | Branch (dara-v2, dara-v2-ui, rs-intelligence-infra) | Script target | TF root | Role | Who lands here |
 |---|---|---|---|---|---|---|
 | **dev** | Ofek's internal box (today "dev2") | `dev` | `dev` | `environments/dev2` | anything goes — features/experiments land first, deployed freely from any local tree | every feature/experiment |
-| **test** | the review box (today "QA box") | `test` | `test` | `environments/dev` | in-work preview for review — **ff-merged** features from `dev` + **blessed dumps only** | curated promotions |
-| **staging** *(future)* | new box + real domain | `staging` (frozen for now) | — not wired yet — | — TBD — | pre-prod with domain/TLS/real config | promotions from `test` |
+| **stg** | the box the people who test for us use (`stg.rs-intel.com`) | `stg` | `stg` | `environments/stg` | reviewer environment — **ff-merged** code from `dev` (gate `dev-ok-*`) + **blessed dumps only**, seeded by preserve-merge (reviewer accounts kept) | curated promotions |
+| ~~**test**~~ | RETIRED 2026-10-08 (JIG-089) — was the review box `rs-intelligence-dev-box-2` | ~~`test`~~ (origin branch deleted) | refused | `environments/dev` (destroyed) | — | — |
+| **staging** *(future)* | new box + real domain | `staging` (frozen for now) | — not wired yet — | — TBD — | pre-prod with domain/TLS/real config | promotions from `stg` |
 | **prod** *(future)* | new box | `main`/`prod` | — not wired yet — | — TBD — | production | promotions from `staging` |
 
-Neither `dev` nor `test` is the ECS/ALB/RDS `environments/staging` architecture
+Neither `dev` nor `stg` is the ECS/ALB/RDS `environments/staging` architecture
 (a *third*, unrelated TF root used by `scripts/{sleep,wake,deep-sleep,deep-wake,deep-deep-sleep,deep-deep-wake}.sh`
 for the full AWS integration-gate stack) — don't confuse the two "staging"s:
 the **branch** `staging` (frozen, see below) names a *future Lightsail-tier
 env slot*; the **TF root** `environments/staging` names the *existing* ECS
 stack. They happen to share a word, not a purpose. **Naming note
-(2026-07-30):** the CI ladder's dormant third rung (below) uses branch name
+(2026-07-30):** the CI ladder's stg rung (below — live since 2026-09-14, the
+second and last rung since 2026-10-08) uses branch name
 `stg` — that is a *different* branch from the frozen `staging` above, and
-now has its own scaffold TF root too: `environments/stg/` (an inert mirror
-of `environments/dev`'s Lightsail-box shape, state key
-`stg/terraform.tfstate`, **not applied** — see that directory's README).
+now has its own TF root too: `environments/stg/` (the dev-box module,
+state key `stg/terraform.tfstate`, applied 2026-09-14 — see that
+directory's README).
 `environments/cicd` already instantiates `module.stg`'s deploy role/SSM
 activation against `environments/stg`'s future box, so once
 `environments/stg` is applied the CI/CD side is already wired and waiting.
@@ -48,10 +60,13 @@ repo's `environments/cicd/` (Terraform, reviewed — `terraform plan` = 36
 add / 0 change / 0 destroy — but **not yet applied**).
 
 ```
-push dev  ──▶ checks (light, no DB) ──▶ build + SSM deploy ──▶ health-gate ──▶ autotag dev-ok-<sha>  ──▶ ledger row
-push test ──▶ tag-gate (needs dev-ok-* or patch-* AT HEAD) ──▶ checks (full, DB-backed) ──▶ build + SSM deploy ──▶ health-gate ──▶ autotag test-ok-<sha> ──▶ ledger row
-push stg  ──▶ same shape as test (needs test-ok-*/patch-*) — DORMANT, see STG_ENABLED below
+push dev ──▶ checks (light, no DB) ──▶ build + SSM deploy ──▶ health-gate ──▶ autotag dev-ok-<sha> ──▶ ledger row
+push stg ──▶ tag-gate (needs dev-ok-* or patch-* AT HEAD) ──▶ checks (full, DB-backed) ──▶ build + SSM deploy ──▶ health-gate ──▶ autotag stg-ok-<sha> ──▶ ledger row
 ```
+(Until 2026-10-08 a middle `push test` rung sat between them and stg gated
+on its tag; JIG-089 retired it. NB: workflows run from the pushed ref, so
+the new stg gate arrives on `origin/stg` with the first `dev → stg` ff push
+after JIG-089 — until then a `Redeploy — stg` still asks for the old class.)
 
 Two switches (both GitHub repo **variables**, not secrets — no GitHub
 Environments used here, see the Deviations register at the bottom of this
@@ -60,12 +75,11 @@ file):
 - **`CICD_ENABLED`** — master switch. Every rung's top-level job carries
   `if: vars.CICD_ENABLED == 'true'`; `false`/unset means every deploy
   workflow no-ops on every push. Currently unset.
-- **`STG_ENABLED`** — stg stays dormant even after `CICD_ENABLED` flips
-  true, until Ofek separately sets this one. There's no stg box today
-  anyway.
+- **`STG_ENABLED`** — stg's own switch on top of `CICD_ENABLED`; set
+  `true` since 2026-09-14 (stg stand-up).
 
 **Promotion is fast-forward-only now — cherry-picks are retired.** `dev` →
-`test` → `stg` moves by `git merge --ff-only`, not cherry-pick-squash. See
+`stg` moves by `git merge --ff-only`, not cherry-pick-squash. See
 the updated PROMOTION POLICY below — the old cherry-pick instructions are
 gone from this file, not just superseded in spirit.
 
@@ -83,8 +97,8 @@ source instead. Full procedure in the new "Rollback" section below.
 
 ### Deploy paths
 
-- **CI is the default path** for dev/test/stg once `CICD_ENABLED=true` — a
-  push to `dev`/`test`/`stg` (or a `workflow_dispatch`) is how a normal
+- **CI is the default path** for dev/stg once `CICD_ENABLED=true` — a
+  push to `dev`/`stg` (or a `workflow_dispatch`) is how a normal
   deploy happens going forward.
 - **`scripts/dev-deploy.sh` is retained, unchanged in semantics**, now
   serving two purposes: (a) the sandbox/tree-deploy tool for `dev`
@@ -106,12 +120,12 @@ dump they were derived from. Full writeup:
 ## Flow
 
 ```
-feature branch → dev → (ff-only merge, CI tag-gated) → test → (future) stg → (future) prod
+feature branch → dev → (ff-only merge, CI tag-gated on dev-ok-*) → stg → (future) prod
 ```
 
 **Rule: an env only ever runs its own branch** — "what's on the box" is
 always answerable by `git log <branch>`. This is enforced in code for
-`test` (branch-pinned builds, see "Branch-pinned deploys" below — and now
+`stg` (branch-pinned builds, see "Branch-pinned deploys" below — and now
 also the CI ladder's own branch-triggered workflows), and by discipline for
 `dev`. Cherry-pick promotion (the original 2026-07-19 model) is **retired
 as of 2026-07-30** — see PROMOTION POLICY below for the current ff-only
@@ -121,15 +135,17 @@ rule and why.
 
 - **`dev`** — Ofek's sandbox line. Low-ceremony pushes (agents still never
   push). Feature branches merge into `dev`.
-- **`test`** — receives **fast-forward merges** promoted from `dev`
+- **`stg`** — receives **fast-forward merges** promoted from `dev`
   (cherry-pick retired 2026-07-30 — see PROMOTION POLICY). The review gate
-  still lives at promotion time, not push-to-mainline time; it's now also
-  machine-enforced by the CI ladder's tag-gate (HEAD must carry a
-  `dev-ok-*` tag, or an Ofek `patch-*` override, before `test` deploys).
+  lives at promotion time; it's also machine-enforced by the CI ladder's
+  tag-gate (HEAD must carry a `dev-ok-*` tag, or an Ofek `patch-*`
+  override, before `stg` deploys).
+- **`test`** — RETIRED 2026-10-08 (JIG-089): `origin/test` deleted in
+  `dara-v2` and `dara-v2-ui`; the `test-ok-*` tags stay as history.
 - **`staging`** — **FROZEN**, reserved for the future domain env. Not
   deleted (history references it everywhere) and not currently deployed
   anywhere. When the staging box exists, `staging` resumes as the promotion
-  target from `test`.
+  target from `stg`.
 - Docs repos (`dara-*-docs`) stay on `main` — no env semantics there.
 
 ### Mapping from the old (pre-2026-07-19) world
@@ -142,65 +158,54 @@ became **`test`**. `dev = git branch dev staging` (local tip);
 
 ## Box roles / script target vocabulary
 
-**⚠️ Vocabulary flip, read carefully:** the OLD script targets were
-`feature` (→ today's dev2 box) and `dev` (→ today's QA/review box). Under
-the new model, **`dev` now means the INTERNAL box** (old `feature`) and
-**`test` means the review box** (old `dev`) — a bare `dev` invocation out of
-habit now hits the *opposite* box from what it used to.
+Script targets are **`dev`** and **`stg`** (2026-10-08, JIG-089). `test` is
+refused with a one-line error (*"target 'test' was retired 2026-10-08
+(JIG-089); use stg"*). `feature` is still accepted as a **deprecated alias**
+for `dev` (prints a warning). The old 3-second "habit-typed `dev`" pause is
+gone — it existed only because `dev` once meant the review box. `stg`
+pauses 5 s before writing (skip with `--yes`); `dev-apply-sql.sh stg`
+additionally needs `--i-mean-stg`.
 
-- `feature` is accepted as a **deprecated alias** for `dev` (prints a
-  warning) — safe, unambiguous, keep using it if you want the warning as a
-  reminder to switch.
-- `dev` (typed bare) prints a one-line notice — *"target 'dev' = the
-  INTERNAL box (environments/dev2) under the 2026-07-19 model; the review
-  box is now 'test'"* — and **pauses 3 seconds** before proceeding, so a
-  habit-typed `dev` can be Ctrl-C'd. Pass `--yes` to skip the pause.
-- `test` needs no guard — it's a new word, no old muscle memory collides
-  with it.
-
-| Role | Script target | TF root | State key | Key file | Canonical URL | Fallback URL | AWS name prefix |
+| Role | Script target | TF root | State key | Key file | Canonical URL | IP | AWS name prefix |
 |---|---|---|---|---|---|---|---|
-| **dev** (internal) — new/experimental work lands here first, from any local tree | `dev` (`feature` = deprecated alias) | `environments/dev2` | `dev2/terraform.tfstate` | `feature_box_key.pem` | `https://dev.<ip-with-dashes>.sslip.io` today; `https://dev.rs-intel.com` once the CI-3 cutover runs (DNS already live, box not yet cut over — see "URL / DNS") | `https://<ip-with-dashes>.sslip.io` | `rs-intelligence-dev2-*` |
-| **test** (review) — ff-merged `test`-branch code + blessed dumps only | `test` (old target name was `dev` — CAUTION) | `environments/dev` | `dev/terraform.tfstate` | `dev_box_key.pem` | **https://test.rs-intel.com** (live since 2026-07-26) | https://test.54-195-65-131.sslip.io + https://54-195-65-131.sslip.io — **both die at the CI-3 cutover** | `rs-intelligence-dev-*` |
+| **dev** (internal) — new/experimental work lands here first | `dev` (`feature` = deprecated alias) | `environments/dev2` | `dev2/terraform.tfstate` | `feature_box_key.pem` | **https://dev.rs-intel.com** | 54.155.62.174 | `rs-intelligence-dev2-*` |
+| **stg** (reviewers) — ff-merged `stg`-branch code + blessed dumps only | `stg` | `environments/stg` | `stg/terraform.tfstate` | `stg_box_key.pem` | **https://stg.rs-intel.com** | 34.254.119.146 | `rs-intelligence-stg-*` |
+| ~~test~~ — RETIRED 2026-10-08 | refused | `environments/dev` (destroyed; directory removed after the destroy) | `dev/terraform.tfstate` | ~~`dev_box_key.pem`~~ | ~~test.rs-intel.com~~ (A record deleted) | ~~54.195.65.131~~ (released) | ~~`rs-intelligence-dev-*`~~ |
 
 **⚠️ TF directory names are IMMUTABLE — S3 state keys:** the internal box
-lives under `environments/dev2` and the review box under `environments/dev`.
-Both directory names predate this vocabulary (dev2 was created second; `dev`
-predates the split) and **must not be renamed** — renaming would churn the
-S3 state key and changing the `environment` Terraform variable would
-recreate the box (new IP, new URL). Likewise the `.pem` key filenames
-(`feature_box_key.pem` / `dev_box_key.pem`) are kept as-is rather than
-renamed to match the new target words — they're local artifacts (gitignored,
-re-derived from `terraform output` each run), renaming them buys nothing and
-just adds churn. **Think in `dev` / `test` everywhere except inside
-`environments/`, where `dev2 = dev` and `dev = test`.**
+lives under `environments/dev2` and **must not be renamed** — renaming would
+churn the S3 state key and changing the `environment` Terraform variable
+would recreate the box (new IP, new URL). Likewise `feature_box_key.pem` is
+kept as-is (local artifact, gitignored, re-derived from `terraform output`).
+**Think in `dev` / `stg` everywhere except inside `environments/`, where
+`dev2 = dev`.**
 
-- IaC: `environments/dev2/` (dev/internal) + `environments/dev/` (test/review),
+- IaC: `environments/dev2/` (dev/internal) + `environments/stg/` (stg),
   both wiring only `modules/dev-box/`.
 - App: `dara-v2/docker-compose.dev.yml` + `dara-v2/deploy/Caddyfile`.
-- Scripts: `scripts/dev-deploy.sh <dev|test> [--yes]` (code/UI/image) ·
-  `scripts/dev-seed.sh <dev|test> [dump.sql.gz] [--yes]` (data) ·
+- Scripts (every one accepts `--dry-run`/`--plan` to print target, TF dir,
+  key and expected IP without connecting; each asserts terraform's
+  `static_ip` equals the expected IP before any ssh):
+  `scripts/dev-deploy.sh <dev|stg> [--yes] [--tree] [--dry-run]` (code/UI/image) ·
+  `scripts/dev-seed.sh <dev|stg> [dump.sql.gz] [--yes] [--dry-run]` (data) ·
+  `scripts/dev-apply-sql.sh <dev|stg> <file.sql> [--dry-run] [--yes] [--i-mean-stg] [--plan]` (SQL delta) ·
   `scripts/make-seed.sh` (cut a blessed dump artifact, no target — always
   local).
 
 ## Branch-pinned deploys (the model's core guarantee)
 
-- **`dev-deploy.sh test`** never builds from the working tree. It runs
-  `git archive test | tar -x` into a throwaway temp dir for **both**
-  `dara-v2` and `dara-v2-ui` (checkouts sit on `dev` day-to-day — the test
-  deploy must not accidentally ship whatever's currently checked out), `npm
-  ci` there (a fresh archive has no `node_modules`), builds from that pinned
-  tree, and refuses with a clear error if either repo has no local `test`
-  branch. This is what makes "what's on the test box = `git log test`"
-  actually true.
-- **`dev-deploy.sh dev`** stays tree-based — it builds from whatever's
-  currently checked out, since `dev` is Ofek's sandbox and deliberately
-  supports "deploy this random experiment right now." It prints a
-  **non-blocking warning** if either repo's checkout isn't on `dev`, so an
-  accidental deploy-from-the-wrong-branch is visible but never blocked.
+- **`dev-deploy.sh stg`** never builds from the working tree. It runs
+  `git archive stg | tar -x` into a throwaway temp dir for **both**
+  `dara-v2` and `dara-v2-ui`, `npm ci` there (a fresh archive has no
+  `node_modules`), builds from that pinned tree, and refuses with a clear
+  error if either repo has no local `stg` branch. `--tree` is refused for
+  `stg`. This is what makes "what's on the stg box = `git log stg`" true.
+- **`dev-deploy.sh dev`** is branch-pinned to `dev` too (since 2026-07-30);
+  `--tree` deliberately builds whatever is checked out, for "deploy this
+  random experiment right now."
 
 **The CI ladder gets this same guarantee for free, differently.**
-`deploy-dev.yml`/`deploy-test.yml`/`deploy-stg.yml` each trigger only off a
+`deploy-dev.yml`/`deploy-stg.yml` each trigger only off a
 push to their own branch (or a `workflow_dispatch` naming that branch,
 enforced by `redeploy.yml`'s branch-match guard) and build from that push's
 sha — there's no working-tree ambiguity to guard against, because CI never
@@ -216,8 +221,9 @@ terraform apply -var-file=terraform.tfvars      # ~2-3 min; creates Lightsail bo
 terraform output url                            # http://<static-ip>
 ```
 
-The test (review) box already exists — no `terraform apply` needed unless
-recreating it from scratch (same commands, but `cd environments/dev`).
+The stg box already exists — no `terraform apply` needed unless recreating
+it from scratch (same commands, but `cd environments/stg`; see
+`environments/stg/README.md`).
 
 ## SSM hybrid activation (boxes as managed nodes)
 
@@ -255,9 +261,10 @@ changes.
 
 ```sh
 cd ..                                # repo root (rs-intelligence-infra)
-./scripts/dev-deploy.sh dev          # deploy to the internal box (tree-based)
-./scripts/dev-deploy.sh test         # deploy to the review box (branch-pinned to `test`)
-./scripts/dev-deploy.sh dev --yes    # skip the 3s habit-typed-dev pause
+./scripts/dev-deploy.sh dev              # deploy the `dev` branch tip to the internal box
+./scripts/dev-deploy.sh dev --tree       # deploy the working tree to the internal box (experiments)
+./scripts/dev-deploy.sh stg --dry-run    # print target / TF dir / key / expected IP, touch nothing
+./scripts/dev-deploy.sh stg              # manual fallback for stg (branch-pinned to `stg`; CI is the normal path)
 ```
 Builds the UI + amd64 API image, ships them, `docker compose up -d`. Redeploy
 after code changes = re-run `dev-deploy.sh <target>` (add `dev-seed.sh` only
@@ -273,13 +280,25 @@ build+ship+up sequence over SSM instead of ssh+rsync.
 ## Seed data
 
 ```sh
-./scripts/dev-seed.sh dev                     # dev: pg_dump the local DB → restore
-./scripts/dev-seed.sh test path/to/dump.sql.gz   # test: restore from a blessed dump
+./scripts/dev-seed.sh dev                                   # dev: pg_dump the local DB → plain restore
+./scripts/dev-seed.sh stg --dry-run                         # print the stg plan, touch nothing
+./scripts/dev-seed.sh stg snapshots/seeds/<blessed>.sql.gz  # stg: preserve-merge restore from a blessed dump
 ```
-With no second argument, `dev-seed.sh` pg_dumps whatever is currently in your
-local `dara_v2` DB. With a second argument (a `.sql.gz` path), it skips the
-local dump and ships that file instead. Same `dev`/`test` guard + `--yes` as
-`dev-deploy.sh` (a bare `dev-seed.sh dev` pauses 3s with a notice).
+`dev`: with no second argument, `dev-seed.sh` pg_dumps whatever is currently
+in your local `dara_v2` DB; with a `.sql.gz` path it ships that file instead.
+Plain restore — the dump wins on every table.
+
+`stg`: a blessed dump file is **mandatory**, and the restore is a
+**preserve-merge** (JIG-089, the SEED 1–4 shape of the 2026-10-04 promote
+runbook): (1) export `users`, `password_reset_tokens`, `user_audit_log`,
+`manual_overrides` to CSV on the box under `/opt/dara/preserve_<ts>/`
+(+ `PRESERVE_OFFBOX=<dir>` for a local copy), pause the watchdog;
+(2) restore the dump (api down); (3) one transaction: box wins on
+users / tokens / audit, box-only `manual_overrides` ids re-inserted,
+id sequences fixed where present (all four use uuid ids today); api up;
+(4) asserts — ids before == after, users identity unchanged, 0 preserved
+override ids lost. A failed merge leaves the CSVs on the box and prints
+`dev-seed.sh stg --merge-only /opt/dara/preserve_<ts> --yes` to finish.
 
 ### Cutting a blessed dump
 
@@ -296,25 +315,25 @@ repo.
 ## PROMOTION POLICY (discipline, mostly enforced in code now)
 
 **Code promotion is fast-forward-only, 2026-07-30 — cherry-picks are
-retired.** `dev` → `test` → `stg` moves by `git merge --ff-only` (both
-`dara-v2` and `dara-v2-ui` repos), never a cherry-pick-squash. This
-replaces the original 2026-07-19 "cherry-pick features from dev into test"
-rule outright — ff-only is what lets the CI ladder's tag-gate reason about
-"is `test`'s HEAD something `dev` has already blessed" without diffing
+retired.** `dev` → `stg` moves by `git merge --ff-only` (both
+`dara-v2` and `dara-v2-ui` repos), never a cherry-pick-squash (the middle
+`test` step was retired 2026-10-08, JIG-089). This replaces the original
+2026-07-19 "cherry-pick features from dev into test" rule outright —
+ff-only is what lets the CI ladder's tag-gate reason about "is `stg`'s
+HEAD something `dev` has already blessed" without diffing
 trees. The still-manual step is the merge itself (Ofek decides *when* to
 promote); once the promoted branch's tip carries the upstream `<env>-ok-*`
 CI tag (or an Ofek `patch-*` override), pushing it deploys automatically.
 
-- **`test` box** only ever gets: code that is `test = git merge --ff-only
-  dev` (both repos) with HEAD carrying a `dev-ok-*` CI tag or a `patch-*`
-  override, deployed either by the CI ladder (`push test`, once
-  `CICD_ENABLED=true`) or manually via `dev-deploy.sh test` (branch-pinned
-  — see above, code-enforced either way), and reseeded **only** from a
-  blessed dump under `snapshots/seeds/` via `dev-seed.sh test
-  <dump.sql.gz>` — never a live local `pg_dump` (`dev-seed.sh test` with no
-  second arg), because local may contain mid-campaign experiments. This
-  data rule is unchanged by the CI ladder — CI never touches seed data,
-  only code + image.
+- **`stg` box** only ever gets: code that is `stg = git merge --ff-only
+  dev` (both repos) with HEAD carrying a `dev-ok-*` CI tag or an annotated
+  `patch-*` override, deployed by the CI ladder (`push stg`, rigor full)
+  or manually via `dev-deploy.sh stg` (branch-pinned), and reseeded
+  **only** from a blessed dump under `snapshots/seeds/` via `dev-seed.sh
+  stg <dump.sql.gz>` (preserve-merge — reviewer accounts survive) — never a
+  live local `pg_dump` (the script refuses `stg` without a dump file). CI
+  never touches seed data, only code + image. Each `dev → stg` promote is
+  a separate CEO GO.
 - **`dev` box** takes any local tree, any time — `dev-deploy.sh dev` +
   `dev-seed.sh dev` with no dump argument is the normal flow. Once
   `CICD_ENABLED=true`, a `push` to the `dev` branch ALSO triggers the CI
@@ -333,7 +352,7 @@ CI tag (or an Ofek `patch-*` override), pushing it deploys automatically.
 **Canonical-only hosts, as of the CI-3 Caddyfile (2026-07-30) — but the
 boxes themselves are NOT cut over yet.** `deploy/Caddyfile` in `dara-v2`
 and this repo's `dev-deploy.sh` both now build/serve **exactly one
-hostname per box** (`dev.rs-intel.com` / `test.rs-intel.com`) — the old
+hostname per box** (`dev.rs-intel.com` / `stg.rs-intel.com`) — the old
 dual-host sslip+canonical Caddy config is retired in the code, but each box
 keeps running whatever Caddyfile it was last deployed with until someone
 runs the cutover. **Full operator runbook:
@@ -345,13 +364,11 @@ nothing there runs unattended.**
   but the box-side cutover (redeploying with the CI-3 Caddyfile +
   `domain.env`) hasn't run yet. Until then, treat `dev` as still on its
   pre-cutover config — sslip-only, per the table above.
-- **test (review)**: canonical **https://test.rs-intel.com** already live
-  (GoDaddy A → `54.195.65.131`, DNS/TLS cut over 2026-07-26 — that predates
-  CI-3's Caddyfile rewrite). Because the *dual-host* Caddy config is what's
-  still deployed there today, `test` currently ALSO answers on
-  `https://test.54-195-65-131.sslip.io` and bare
-  `https://54-195-65-131.sslip.io` — **both die** once the CI-3 Caddyfile
-  is deployed to that box too.
+- **stg**: canonical **https://stg.rs-intel.com** (GoDaddy A →
+  `34.254.119.146`, since 2026-09-14), canonical-only from day one.
+- **test (retired 2026-10-08, JIG-089)**: GoDaddy A `test` →
+  `54.195.65.131` is deleted by hand in P3 (GoDaddy is not in Terraform);
+  the static IP is released by `terraform destroy` of `environments/dev`.
 
 **DNS-before-deploy is now a hard ordering gate, not just good practice.**
 Once the CI-3 Caddyfile is live on a box, Caddy requests a Let's Encrypt
@@ -396,7 +413,7 @@ Set it once, right after the first deploy, so it survives future redeploys
 ssh -i feature_box_key.pem ubuntu@<ip> 'umask 077; echo "JWT_SECRET=$(openssl rand -hex 32)" > /opt/dara/.env'
 ```
 
-**⚠️ Never run this against the test box's existing `/opt/dara/.env`** — it
+**⚠️ Never run this against the stg (or dev) box's existing `/opt/dara/.env`** — it
 already has a live (rotated) secret; overwriting it invalidates every
 existing session token on that box.
 
@@ -415,10 +432,12 @@ line if present, leaves everything else, notably `JWT_SECRET`, untouched).
 `"local"`) picks it up, and `/api/health` returns it as `"env"`. The UI top
 bar reads it off the existing `/api/health` poll (`useHealth()` — no new
 request added) and renders a small badge: **DEV** (amber) when `env=dev`,
-**TEST** (blue) when `env=test`, nothing when `env=local` or absent (plain
-local dev, or any future env not yet wired to `ENV_LABEL`). Lands on `dev`
-first; promotes to `test` with the next ff-only merge like any other
-feature (cherry-pick retired — see PROMOTION POLICY).
+**STG** when `env=stg`, nothing when `env=local` or absent (plain local
+dev, or any future env not yet wired to `ENV_LABEL`). The UI still knows a
+`test` chip (`src/lib/env-chip.ts`, harmless — no box reports `env=test`
+after 2026-10-08). Lands on `dev` first; promotes to `stg` with the next
+ff-only merge like any other feature (cherry-pick retired — see PROMOTION
+POLICY).
 
 CI-deployed boxes additionally stamp `UI_GIT_SHA` and `SV_TAG` into the same
 `/opt/dara/.env` (soft fields in `/api/health` until the parallel SV-12 lane
@@ -427,7 +446,7 @@ lands) — same idempotent strip-and-replace convention as `ENV_LABEL`/
 
 ## Smoke
 
-**Post-deploy contract check: `scripts/validate-box.sh <dev|test|stg>`**
+**Post-deploy contract check: `scripts/validate-box.sh <dev|stg>`**
 (lives in `dara-v2`, WO CI-4) — the same check the CI ladder's `verify` job
 runs after every deploy. No DB access; it asserts the API's *contract*
 (endpoint shapes, feature-flag values, auth enforcement, a soft date-floor
@@ -445,7 +464,7 @@ signal), never data counts. Seven checks, one PASS/WARN/FAIL line each:
 
 Run it manually the same way CI does:
 ```sh
-scripts/validate-box.sh test --expect-sha <shortsha>
+scripts/validate-box.sh stg --expect-sha <shortsha>
 ```
 Credentials: `--user`/`--pass` flags > `$VALIDATE_USER`/`$VALIDATE_PASS` env
 > the smoke user below. A login failure WARN-skips the two checks that need
@@ -462,10 +481,10 @@ verified cut over (see `CUTOVER_RUNBOOK_CI-3.md` §5 "Post-cutover").
 The old manual smoke recipe still works as a sanity check outside the
 script — pointed at the canonical host, not sslip:
 ```sh
-SITE=test.rs-intel.com   # or dev.rs-intel.com once cut over
+SITE=stg.rs-intel.com   # or dev.rs-intel.com
 curl https://$SITE/api/health
 # open https://$SITE  → login smoke@dara.local / DaraDemo2026!  → /gush, /deals
-# the top-bar chip should read TEST (blue) or DEV (amber) accordingly
+# the top-bar chip should read STG or DEV (amber) accordingly
 ```
 The smoke user (`smoke@dara.local`) isn't provisioned by the scripts — it
 travels inside whichever `pg_dump` you seed from (local or blessed).
@@ -474,12 +493,12 @@ travels inside whichever `pg_dump` you seed from (local or blessed).
 
 **Preferred: redeploy-by-tag via `Actions → Redeploy`.** Dispatch the
 `Redeploy` workflow, running it *from the target env's own branch*
-(`dev`/`test`/`stg` — dispatching "redeploy test" while sitting on any
+(`dev`/`stg` — dispatching "redeploy stg" while sitting on any
 other branch fails at the AWS OIDC step, since each env's deploy role trust
 policy is branch-bound; the workflow asserts this itself with a clear error
 before wasting a build), and pick a tag: `dev` accepts `dev-ok-*` /
-`test-ok-*` / `patch-*` / `sv*`; `test` and `stg` accept `test-ok-*` /
-`patch-*` only. This re-ships the artifact already built for that sha/tag —
+`patch-*` / `sv*`; `stg` accepts `dev-ok-*` / `patch-*` (JIG-089; the old
+middle-rung tag class is no longer accepted anywhere). This re-ships the artifact already built for that sha/tag —
 no rebuild, no re-tagging (the ledger still gets a row, `via=redeploy`) —
 and reuses the cached S3 build if it's still inside the artifact bucket's
 60-day per-prefix expiry (~2 min end to end). If the artifact has aged out
@@ -487,7 +506,7 @@ past 60 days there's no cached bundle left to reuse, and the rung falls
 through to a full rebuild from that tag's source instead (same rung, just
 not the fast path).
 
-**Manual fallback:** `scripts/dev-deploy.sh <dev|test>` from whatever local
+**Manual fallback:** `scripts/dev-deploy.sh <dev|stg>` from whatever local
 tree/branch you need — see "Deploy paths" above. Same CI-outage fallback,
 just aimed backward (check out the commit/tag you want to roll back to,
 then deploy).
@@ -541,7 +560,7 @@ snapshot → clone → move the static IP → re-point state, which is what
    `mi-*` appears Online with the env's role + `DeployEnv` tag → `gh variable
    set <ENV>_INSTANCE_ID --repo squanchy667/dara-v2 --body <new mi-*>` → rerun
    the failed deploy. Touch only that env's variable (dev2 → `DEV_INSTANCE_ID`;
-   never guess the test one). The stale node stays listed as ConnectionLost
+   never guess the stg one). The stale node stays listed as ConnectionLost
    until deregistered (`aws ssm deregister-managed-instance`) — harmless, the
    deploy role matches on the tag, not the id.
 
@@ -549,7 +568,8 @@ snapshot → clone → move the static IP → re-point state, which is what
 
 ```sh
 cd environments/dev2 && terraform destroy -var-file=terraform.tfvars   # dev (internal) box
-cd environments/dev  && terraform destroy -var-file=terraform.tfvars   # test (review) box
+cd environments/stg  && terraform destroy -var-file=terraform.tfvars   # stg box
+# (environments/dev = the retired test box — destroyed 2026-10-08 by JIG-089 P3)
 ```
 This removes the box + static IP. (There's no RDS/ALB/NAT to leak cost — the
 only standing resource per box is the instance.) Re-create with
@@ -569,7 +589,7 @@ only standing resource per box is the instance.) Re-create with
   image via `docker buildx build --platform linux/amd64 ... --load`, which
   needs a running local Docker daemon (even though the target box is a
   different arch/host).
-- **`test` deploys are slower** than `dev` deploys — the branch-pinned build
+- **Branch-pinned deploys are slower** than `--tree` deploys — the build
   archives a fresh tree and runs `npm ci` from scratch (no cached
   `node_modules`), on top of the same UI-build + docker-buildx steps `dev`
   does.
@@ -582,18 +602,16 @@ only standing resource per box is the instance.) Re-create with
   under test) do.
 - **SSH keys**: `terraform output -raw private_key_pem` is written to
   `<key-file>` (`feature_box_key.pem` for `dev`/`environments/dev2`,
-  `dev_box_key.pem` for `test`/`environments/dev`) by the scripts (gitignored
-  — do not commit). Kept as historical filenames — see the TF-directory note
-  above for why they don't follow the new `dev`/`test` words.
-- Cost surface check: `aws lightsail get-instances` → the test box
-  `rs-intelligence-dev-box-2` (`small_3_0`, ~$12/mo dualstack, since 2026-09-14
-  afternoon) and the dev box `rs-intelligence-dev2-box-2` (`small_3_0`,
-  ~$12/mo, since 2026-09-14 morning); plus, until the CEO deletes them, the
-  STOPPED old `rs-intelligence-dev2-box` and `rs-intelligence-dev-box` (each
-  still bills ~$7/mo) and the two snapshots
-  `rs-intelligence-dev2-box-pre-resize-20260914` /
-  `rs-intelligence-dev-box-pre-resize-20260914` (40 GB each, ~$0.05/GB-mo). No
-  RDS/ALB/NAT/CloudFront created by either env. The ~$5/~$10 figures quoted
+  `stg_box_key.pem` for `stg`/`environments/stg`) by the scripts (gitignored
+  — do not commit). `feature_box_key.pem` keeps its historical filename.
+- Cost surface check (after JIG-089, 2026-10-08): `aws lightsail
+  get-instances` → the dev box `rs-intelligence-dev2-box-2` and the stg box
+  `rs-intelligence-stg-box` (both `small_3_0`, ~$12/mo dualstack) and two
+  static IPs. Snapshots: `rs-intelligence-dev2-box-pre-resize-20260914`
+  (dev's, untouched by JIG-089); the test box's
+  `rs-intelligence-dev-box-pre-resize-20260914` and
+  `rs-intelligence-dev-box-2-final-20261008` are deleted in JIG-089 P5 after
+  post-verification. No RDS/ALB/NAT/CloudFront created by either env. The ~$5/~$10 figures quoted
   elsewhere are the `*_ipv6_3_0` bundles, which cannot hold a static IPv4.
 
 ## Deviations register (CI/CD build, 2026-07-30)

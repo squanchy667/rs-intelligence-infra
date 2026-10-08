@@ -11,7 +11,7 @@ variable "project_name" {
 variable "github_repo" {
   type        = string
   default     = "squanchy667/dara-v2"
-  description = "GitHub \"org/repo\" whose Actions OIDC tokens may assume the dev/test/stg deploy roles."
+  description = "GitHub \"org/repo\" whose Actions OIDC tokens may assume the dev/stg deploy roles."
 }
 
 variable "alert_email" {
@@ -32,12 +32,6 @@ variable "managed_instance_id_dev" {
   description = "Fallback pin for the dev box's SSM managed-node ID, if ssm:resourceTag/DeployEnv tag propagation doesn't reach it. See modules/gha-deploy-env/README.md."
 }
 
-variable "managed_instance_id_test" {
-  type        = string
-  default     = ""
-  description = "Same fallback for the test box."
-}
-
 variable "managed_instance_id_stg" {
   type        = string
   default     = ""
@@ -47,5 +41,5 @@ variable "managed_instance_id_stg" {
 variable "ssm_activation_expiration" {
   type        = string
   default     = null
-  description = "RFC3339 expiration timestamp applied to all three SSM activations. Null (default) omits the argument and AWS applies its own default activation window. See README.md for re-creating an activation after it expires."
+  description = "RFC3339 expiration timestamp applied to both SSM activations (dev, stg). Null (default) omits the argument and AWS applies its own default activation window. See README.md for re-creating an activation after it expires."
 }

@@ -1,6 +1,7 @@
 # CI/CD environment — GitHub Actions OIDC deploy roles, SSM hybrid
 # activations, the shared artifact bucket, deploy document, log group, and
-# failed-AssumeRole alarm for the dev/test/stg deploy ladder.
+# failed-AssumeRole alarm for the dev → stg deploy ladder (the middle
+# `test` rung and its module were retired 2026-10-08, JIG-089).
 #
 # Separate state key ("cicd/terraform.tfstate") so it never collides with
 # dev/dev2/staging. Same S3 backend bucket + lock table as every other
@@ -70,27 +71,6 @@ module "dev" {
   aws_region = var.aws_region
 
   managed_instance_id   = var.managed_instance_id_dev
-  activation_expiration = var.ssm_activation_expiration
-}
-
-module "test" {
-  source = "../../modules/gha-deploy-env"
-
-  project_name = var.project_name
-  env_name     = "test"
-  branch       = "test"
-  github_repo  = var.github_repo
-
-  oidc_provider_arn    = data.aws_iam_openid_connect_provider.github.arn
-  artifact_bucket_arn  = aws_s3_bucket.artifacts.arn
-  artifact_bucket_name = aws_s3_bucket.artifacts.id
-  deploy_document_arn  = aws_ssm_document.gha_deploy.arn
-  log_group_arn        = aws_cloudwatch_log_group.deploy.arn
-
-  account_id = data.aws_caller_identity.current.account_id
-  aws_region = var.aws_region
-
-  managed_instance_id   = var.managed_instance_id_test
   activation_expiration = var.ssm_activation_expiration
 }
 

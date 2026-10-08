@@ -4,43 +4,39 @@
 # files to the box, and `docker compose up -d`.
 #
 # Branch-pinned builds (2026-07-19 model — "an env only ever runs its own
-# branch"): target=test ALWAYS builds from the `test` branch tip of both
-# dara-v2 and dara-v2-ui via `git archive` into a throwaway build dir — never
-# the working tree, which sits on `dev`. target=dev keeps building from
-# whatever's currently checked out (Ofek's sandbox — any local tree, any
-# time), but warns if that tree isn't on `dev`.
+# branch"): every target builds from its own branch tip of both dara-v2 and
+# dara-v2-ui via `git archive` into a throwaway build dir — never the working
+# tree. `--tree` (dev only) builds whatever is checked out instead.
+# CI (`Deploy — dev` / `Deploy — stg`) is the normal path; this script is the
+# manual fallback.
 #
 # Prereqs: terraform applied in the target's TF root; docker buildx; npm.
-# Usage:   scripts/dev-deploy.sh <dev|test> [--yes]
+# Usage:   scripts/dev-deploy.sh <dev|stg> [--yes] [--tree] [--dry-run]
 #          (`feature` accepted as a deprecated alias for `dev`)
+#   --dry-run  print target / TF dir / key / expected IP / branch and exit —
+#              no build, no ssh.
 set -euo pipefail
 
-# --- box roles (2026-07-19 env model — see DEV.md) --------------------------
-# dev  → environments/dev2 : Ofek's INTERNAL box. Anything goes — every
-#        feature/experiment deploys here first, from any local tree.
-#        Historical script-target name: "feature" (still accepted, deprecated
-#        alias). TF directory kept as `dev2` — do not rename, its S3 state
-#        key must stay put.
-# test → environments/dev  : the REVIEW box (https://54-195-65-131.sslip.io) —
-#        only gets cherry-picked `test`-branch code + blessed seed dumps (see
-#        DEV.md promotion policy). TF directory predates the split and must
-#        not be renamed either — its S3 state key must stay put.
-#        Historical script-target name: "dev" — CAUTION, meaning FLIPPED
-#        under the new model. See the guard below.
-#
-# Because the OLD `dev` target meant today's `test` box, a bare `dev`
-# invocation can't be told apart from old muscle memory. So target=dev prints
-# a one-line notice and pauses 3s (skip with --yes) — enough for a
-# habit-typed `dev` to be caught before it deploys to the wrong box.
+# --- box roles (env model — see DEV.md) ----------------------------------------
+# dev → environments/dev2 : Ofek's INTERNAL box. Anything goes — every
+#       feature/experiment deploys here first. Historical script-target name:
+#       "feature" (still accepted, deprecated alias). TF directory kept as
+#       `dev2` — do not rename, its S3 state key must stay put.
+# stg → environments/stg  : the box the people who test for us use
+#       (https://stg.rs-intel.com) — only `stg`-branch code (ff from dev,
+#       gate dev-ok-*) + blessed seed dumps (DEV.md promotion policy).
+# test was RETIRED 2026-10-08 (JIG-089): the ladder is dev → stg.
 # -----------------------------------------------------------------------------
 
 YES=0
 TREE_BUILD=0
+DRY_RUN=0
 RAW_TARGET=""
 for arg in "$@"; do
   case "$arg" in
     --yes) YES=1 ;;
     --tree) TREE_BUILD=1 ;;
+    --dry-run) DRY_RUN=1 ;;
     *) if [ -z "$RAW_TARGET" ]; then RAW_TARGET="$arg"; fi ;;
   esac
 done
@@ -50,28 +46,23 @@ case "$RAW_TARGET" in
     echo "warning: target 'feature' is a deprecated alias for 'dev' (2026-07-19 env model) — use 'dev' going forward." >&2
     TARGET="dev"
     ;;
-  dev)
-    echo "NOTE: target 'dev' = the INTERNAL box (environments/dev2) under the 2026-07-19 model; the review box is now 'test'." >&2
-    if [ "$YES" != "1" ]; then
-      echo "    pausing 3s in case this was a habit-typed old-vocabulary 'dev' (= today's 'test') — Ctrl-C to abort, or pass --yes to skip this pause." >&2
-      sleep 3
-    fi
-    TARGET="dev"
-    ;;
+  dev) TARGET="dev" ;;
+  stg) TARGET="stg" ;;
   test)
-    TARGET="test"
+    echo "error: target 'test' was retired 2026-10-08 (JIG-089); use stg" >&2
+    exit 2
     ;;
   *)
-    echo "usage: dev-deploy.sh <dev|test> [--yes] [--tree]   (feature = deprecated alias for dev)" >&2
-    echo "  builds are BRANCH-PINNED: target 'dev' deploys the 'dev' branch tip, 'test' the 'test' tip." >&2
+    echo "usage: dev-deploy.sh <dev|stg> [--yes] [--tree] [--dry-run]   (feature = deprecated alias for dev)" >&2
+    echo "  builds are BRANCH-PINNED: target 'dev' deploys the 'dev' branch tip, 'stg' the 'stg' tip." >&2
     echo "  --tree  (dev only) build the working tree instead, to deploy an un-merged experiment." >&2
     exit 1
     ;;
 esac
 
 case "$TARGET" in
-  dev)  TF_DIR="environments/dev2"; KEY_NAME="feature_box_key.pem" ;;
-  test) TF_DIR="environments/dev";  KEY_NAME="dev_box_key.pem" ;;
+  dev) TF_DIR="environments/dev2"; KEY_NAME="feature_box_key.pem"; EXPECTED_IP="54.155.62.174" ;;
+  stg) TF_DIR="environments/stg";  KEY_NAME="stg_box_key.pem";     EXPECTED_IP="34.254.119.146" ;;
 esac
 
 INFRA_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -92,8 +83,8 @@ IMG_TAR="/tmp/dara-api-${TARGET}.tar.gz"
 # --- branch-pinned build source ----------------------------------------------
 # BOTH targets are branch-pinned (changed 2026-07-30, Ofek): the box always
 # runs its own branch's tip, never whatever happened to be checked out.
-#   target=dev  → archives the `dev` branch tip
-#   target=test → archives the `test` branch tip
+#   target=dev → archives the `dev` branch tip
+#   target=stg → archives the `stg` branch tip
 # This is the same contract the CI ladder enforces (deploy-dev.yml builds the
 # sha that was pushed to `dev`), so the manual path and CI can no longer
 # disagree about what "deployed to dev" means. It also makes the deploy immune
@@ -105,7 +96,7 @@ IMG_TAR="/tmp/dara-api-${TARGET}.tar.gz"
 #
 # Escape hatch: `--tree` restores the old target=dev behaviour of building
 # whatever is checked out, for deliberately deploying an un-merged experiment.
-# It refuses on target=test — the review box is never tree-built.
+# It refuses on target=stg — the stg box is never tree-built.
 # ------------------------------------------------------------------------------
 BUILD_BE="$BE"
 BUILD_UI="$UI"
@@ -115,11 +106,27 @@ BUILD_TMP=""
 cleanup() { { [ -n "$BUILD_TMP" ] && rm -rf "$BUILD_TMP"; } || true; }
 trap cleanup EXIT
 
-if [ "$TREE_BUILD" = "1" ]; then
-  if [ "$TARGET" = "test" ]; then
-    echo "error: --tree is not allowed for target=test — the review box is always branch-pinned to 'test'." >&2
-    exit 1
+if [ "$TREE_BUILD" = "1" ] && [ "$TARGET" = "stg" ]; then
+  echo "error: --tree is not allowed for target=stg — the stg box is always branch-pinned to 'stg'." >&2
+  exit 1
+fi
+
+if [ "$DRY_RUN" = "1" ]; then
+  echo "dev-deploy.sh DRY RUN — nothing is built, shipped or connected to"
+  echo "  target      = $TARGET"
+  echo "  tf dir      = $DEV_TF"
+  echo "  ssh key     = $KEY (rewritten from terraform output -raw private_key_pem on a real run)"
+  echo "  expected ip = $EXPECTED_IP (asserted against terraform output -raw static_ip before any ssh)"
+  if [ "$TREE_BUILD" = "1" ]; then
+    echo "  build       = working tree (--tree): dara-v2 $BE, dara-v2-ui $UI"
+  else
+    echo "  build       = branch-pinned '$TARGET': dara-v2 $(git -C "$BE" rev-parse --short "refs/heads/$TARGET" 2>/dev/null || echo '<no local branch>'), dara-v2-ui $(git -C "$UI" rev-parse --short "refs/heads/$TARGET" 2>/dev/null || echo '<no local branch>')"
   fi
+  echo "  host        = $TARGET.rs-intel.com (from domain.env BASE_DOMAIN)"
+  exit 0
+fi
+
+if [ "$TREE_BUILD" = "1" ]; then
   BE_BRANCH="$(git -C "$BE" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
   UI_BRANCH="$(git -C "$UI" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
   echo "==> target=dev --tree: building the WORKING TREE (dara-v2 on '$BE_BRANCH', dara-v2-ui on '$UI_BRANCH')" >&2
@@ -160,6 +167,10 @@ fi
 
 echo "==> Reading terraform outputs"
 IP="$(terraform -chdir="$DEV_TF" output -raw static_ip)"
+if [ "$IP" != "$EXPECTED_IP" ]; then
+  echo "error: terraform says $TF_DIR static_ip=$IP, expected $EXPECTED_IP for target '$TARGET' — wrong root or the box moved; refusing." >&2
+  exit 1
+fi
 terraform -chdir="$DEV_TF" output -raw private_key_pem > "$KEY"
 chmod 600 "$KEY"
 SSH="ssh -i $KEY -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null"
@@ -192,6 +203,11 @@ else
   SITE_ADDRESS="$PREFIXED_HOST"
 fi
 echo "    box = $IP   host = $PRIMARY_HOST   env = $TARGET"
+if [ "$TARGET" = "stg" ] && [ "$YES" != "1" ]; then
+  echo "WARNING: target 'stg' = the box people test on ($IP). Manual deploy (CI 'Deploy — stg' is the normal path)." >&2
+  echo "    pausing 5s — Ctrl-C to abort, or pass --yes to skip this pause." >&2
+  sleep 5
+fi
 
 echo "==> Building UI static export (NEXT_PUBLIC_API_URL='' → same-origin /api/)"
 ( cd "$BUILD_UI" && NEXT_PUBLIC_API_URL="" npm run build )
@@ -201,7 +217,7 @@ echo "==> Building API image (linux/amd64) and saving"
 docker save dara-api:dev | gzip > "$IMG_TAR"
 
 echo "==> Waiting for cloud-init (docker install) on the box"
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   if $SSH ubuntu@"$IP" 'test -f /opt/dara/.cloud-init-done' 2>/dev/null; then break; fi
   sleep 5
 done

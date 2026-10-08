@@ -44,7 +44,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
   bucket = aws_s3_bucket.artifacts.id
 
   dynamic "rule" {
-    for_each = toset(["dev", "test", "stg"])
+    for_each = toset(["dev", "stg"])
     content {
       id     = "expire-${rule.value}"
       status = "Enabled"

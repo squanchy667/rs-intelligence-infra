@@ -1,3 +1,32 @@
+# environments/stg
+
+**Status 2026-10-08 (JIG-089):** applied 2026-09-14 (box
+`rs-intelligence-stg-box`, static IP 34.254.119.146, SSM node
+`mi-09efafad4e9cd7e11`, https://stg.rs-intel.com). Since the test env's
+retirement on 2026-10-08 stg is the **second and last rung** of the ladder
+(`dev → stg`, CI gate `dev-ok-*` or an annotated `patch-*`, rigor full).
+The "When the word is given" steps below are the 2026-09-14 stand-up
+history.
+
+## Reseeding stg (blessed dump, preserve-merge)
+
+```
+scripts/dev-seed.sh stg --dry-run                                  # prints key / IP / TF dir / mode, touches nothing
+scripts/dev-seed.sh stg snapshots/seeds/<blessed>.sql.gz           # 5 s pause; --yes skips it
+```
+
+Before the restore the box's `users`, `password_reset_tokens`,
+`user_audit_log` and `manual_overrides` are exported to
+`/opt/dara/preserve_<ts>/`; after it, one transaction re-inserts them (box
+wins on users / tokens / audit; box-only override ids re-added) and asserts
+ids before == after and 0 preserved override ids lost. If the merge fails:
+`scripts/dev-seed.sh stg --merge-only /opt/dara/preserve_<ts> --yes`.
+Manual code deploy (CI-outage fallback only): `scripts/dev-deploy.sh stg`
+(branch-pinned to `stg`). SQL delta: `scripts/dev-apply-sql.sh stg <file>
+--i-mean-stg` (blessed dumps are the rule; a delta is the exception).
+
+## Stand-up history (2026-09-14)
+
 **Apply on the CEO's word only** (STG Phase 2 of
 `DaraReports/plans/PLAN_STG_STANDUP_2026-09-14.md`). Not applied as of
 2026-09-14: no `stg/terraform.tfstate` object exists yet. Until the word is
@@ -5,8 +34,8 @@ given this root is reviewed Terraform that validates and formats cleanly.
 
 ## What this is
 
-The Lightsail box for **stg** — the team-demo twin of `test`
-(`https://stg.rs-intel.com`, code ff'd `test → stg`, same blessed dump,
+The Lightsail box for **stg** — at stand-up the team-demo twin of `test`
+(`https://stg.rs-intel.com`, code ff'd `test → stg` until 2026-10-08, `dev → stg` since; same blessed dump,
 same Profile B levers). It mirrors `environments/dev`'s root exactly:
 `../../modules/dev-box`, `environment = "stg"`, state key
 `stg/terraform.tfstate`, the same variables (including `instance_name` for

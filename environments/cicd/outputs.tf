@@ -48,29 +48,6 @@ output "dev_activation_code" {
   sensitive   = true
 }
 
-# ── test ─────────────────────────────────────────────────────────────
-
-output "test_deploy_role_arn" {
-  value       = module.test.deploy_role_arn
-  description = "Test deploy role ARN — set as the GitHub Actions AWS role for the test environment/branch."
-}
-
-output "test_box_role_arn" {
-  value       = module.test.box_role_arn
-  description = "Test box's SSM hybrid-activation role ARN."
-}
-
-output "test_activation_id" {
-  value       = module.test.activation_id
-  description = "Test box SSM activation ID."
-}
-
-output "test_activation_code" {
-  value       = module.test.activation_code
-  description = "Test box SSM activation code."
-  sensitive   = true
-}
-
 # ── stg ──────────────────────────────────────────────────────────────
 
 output "stg_deploy_role_arn" {

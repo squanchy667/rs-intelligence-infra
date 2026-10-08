@@ -1,7 +1,8 @@
 # gha-deploy-env
 
 Per-environment building block for the GitHub Actions CI/CD deploy ladder
-(`environments/cicd` instantiates this once each for dev, test, and stg).
+(`environments/cicd` instantiates this once each for dev and stg; the `test`
+rung was retired 2026-10-08, JIG-089).
 
 ## What it makes
 

@@ -6,11 +6,11 @@ variable "project_name" {
 
 variable "env_name" {
   type        = string
-  description = "Deploy-ladder environment this instance is for — dev | test | stg. Used in role names, the S3 artifact prefix, and the SSM tag condition."
+  description = "Deploy-ladder environment this instance is for — dev | stg (test retired 2026-10-08, JIG-089). Used in role names, the S3 artifact prefix, and the SSM tag condition."
 
   validation {
-    condition     = contains(["dev", "test", "stg"], var.env_name)
-    error_message = "env_name must be one of: dev, test, stg"
+    condition     = contains(["dev", "stg"], var.env_name)
+    error_message = "env_name must be one of: dev, stg"
   }
 }
 

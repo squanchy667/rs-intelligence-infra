@@ -123,7 +123,7 @@ resource "aws_s3_bucket_policy" "trail" {
 # not the API calls directly.
 resource "aws_cloudwatch_event_rule" "failed_assume_role" {
   name        = "rs-intelligence-cicd-failed-assume-role"
-  description = "AssumeRoleWithWebIdentity failures against the gha-deploy dev/test/stg roles."
+  description = "AssumeRoleWithWebIdentity failures against the gha-deploy dev/stg roles."
 
   event_pattern = jsonencode({
     source      = ["aws.sts"]
@@ -134,7 +134,6 @@ resource "aws_cloudwatch_event_rule" "failed_assume_role" {
       requestParameters = {
         roleArn = [
           module.dev.deploy_role_arn,
-          module.test.deploy_role_arn,
           module.stg.deploy_role_arn,
         ]
       }

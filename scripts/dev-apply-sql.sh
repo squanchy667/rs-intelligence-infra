@@ -21,33 +21,40 @@
 #
 # Prereqs: terraform (for static_ip / private_key_pem), ssh, and a box whose
 #          /opt/dara compose stack is up.
-# Usage:   scripts/dev-apply-sql.sh <dev|test> <file.sql> [--dry-run] [--yes] [--i-mean-test]
+# Usage:   scripts/dev-apply-sql.sh <dev|stg> <file.sql> [--dry-run] [--yes] [--i-mean-stg] [--plan]
+#   --plan  print target / TF dir / key / expected IP and exit — no ssh at all
+#           (--dry-run, by contrast, connects and runs the file inside a
+#           rolled-back transaction).
 #
 # Safety rails:
-#   * target `test` is REFUSED unless --i-mean-test is also passed (the review
-#     box takes blessed dumps only — see DEV.md PROMOTION POLICY).
+#   * target `stg` is REFUSED unless --i-mean-stg is also passed (the stg box
+#     takes blessed dumps only — see DEV.md PROMOTION POLICY).
+#   * target `test` was retired 2026-10-08 (JIG-089) and is refused outright.
 #   * --dry-run refuses to run at all if any COMMIT/END survives neutralisation.
 #   * every command this script runs is printed before it runs.
 set -euo pipefail
 
-# --- box roles (2026-07-19 env model — see DEV.md) --------------------------
-# dev  → environments/dev2 : Ofek's INTERNAL box (new work lands here first).
-# test → environments/dev  : the REVIEW box. Blessed dumps ONLY; a hand-written
-#        delta is exactly what must NOT land there casually, hence the extra
-#        --i-mean-test flag on top of the shared 3s pause.
-# The TF directory names are IMMUTABLE (S3 state keys) — dev2 = dev, dev = test.
+# --- box roles (env model — see DEV.md) ----------------------------------------
+# dev → environments/dev2 : Ofek's INTERNAL box (new work lands here first).
+# stg → environments/stg  : the box the people who test for us use. Blessed
+#       dumps ONLY; a hand-written delta is exactly what must NOT land there
+#       casually, hence the extra --i-mean-stg flag on top of a 5s pause.
+# The TF directory names are IMMUTABLE (S3 state keys) — dev2 = dev.
+# test (environments/dev) was RETIRED 2026-10-08 (JIG-089).
 # -----------------------------------------------------------------------------
 
 YES=0
 DRY_RUN=0
-I_MEAN_TEST=0
+PLAN=0
+I_MEAN_STG=0
 RAW_TARGET=""
 SQL_FILE=""
 for arg in "$@"; do
   case "$arg" in
     --yes) YES=1 ;;
     --dry-run) DRY_RUN=1 ;;
-    --i-mean-test) I_MEAN_TEST=1 ;;
+    --i-mean-stg) I_MEAN_STG=1 ;;
+    --plan) PLAN=1 ;;
     --*)
       echo "error: unknown flag: $arg" >&2
       exit 1
@@ -66,7 +73,7 @@ for arg in "$@"; do
 done
 
 usage() {
-  echo "usage: dev-apply-sql.sh <dev|test> <file.sql> [--dry-run] [--yes] [--i-mean-test]" >&2
+  echo "usage: dev-apply-sql.sh <dev|stg> <file.sql> [--dry-run] [--yes] [--i-mean-stg] [--plan]" >&2
   echo "       (feature = deprecated alias for dev)" >&2
 }
 
@@ -75,27 +82,26 @@ case "$RAW_TARGET" in
     echo "warning: target 'feature' is a deprecated alias for 'dev' (2026-07-19 env model) — use 'dev' going forward." >&2
     TARGET="dev"
     ;;
-  dev)
-    echo "NOTE: target 'dev' = the INTERNAL box (environments/dev2) under the 2026-07-19 model; the review box is now 'test'." >&2
-    if [ "$YES" != "1" ]; then
-      echo "    pausing 3s in case this was a habit-typed old-vocabulary 'dev' (= today's 'test') — Ctrl-C to abort, or pass --yes to skip this pause." >&2
-      sleep 3
-    fi
-    TARGET="dev"
-    ;;
+  dev) TARGET="dev" ;;
   test)
-    if [ "$I_MEAN_TEST" != "1" ]; then
-      echo "REFUSED: target 'test' is the REVIEW box. Under the promotion policy it takes" >&2
+    echo "error: target 'test' was retired 2026-10-08 (JIG-089); use stg" >&2
+    exit 2
+    ;;
+  stg)
+    if [ "$I_MEAN_STG" != "1" ] && [ "$PLAN" != "1" ]; then
+      echo "REFUSED: target 'stg' is the box people test on. Under the promotion policy it takes" >&2
       echo "         ff-merged code and BLESSED DUMPS ONLY — never a hand-written SQL delta." >&2
-      echo "         If you genuinely mean the review box, re-run with --i-mean-test." >&2
+      echo "         If you genuinely mean the stg box, re-run with --i-mean-stg." >&2
       exit 2
     fi
-    echo "WARNING: target 'test' = the REVIEW box, and --i-mean-test was passed." >&2
-    if [ "$YES" != "1" ]; then
-      echo "    pausing 5s — Ctrl-C to abort, or pass --yes to skip this pause." >&2
-      sleep 5
+    if [ "$PLAN" != "1" ]; then
+      echo "WARNING: target 'stg' = the box people test on, and --i-mean-stg was passed." >&2
+      if [ "$YES" != "1" ]; then
+        echo "    pausing 5s — Ctrl-C to abort, or pass --yes to skip this pause." >&2
+        sleep 5
+      fi
     fi
-    TARGET="test"
+    TARGET="stg"
     ;;
   *)
     usage
@@ -113,19 +119,33 @@ if [ ! -f "$SQL_FILE" ]; then
 fi
 
 case "$TARGET" in
-  dev)  TF_DIR="environments/dev2"; KEY_NAME="feature_box_key.pem" ;;
-  test) TF_DIR="environments/dev";  KEY_NAME="dev_box_key.pem" ;;
+  dev) TF_DIR="environments/dev2"; KEY_NAME="feature_box_key.pem"; EXPECTED_IP="54.155.62.174" ;;
+  stg) TF_DIR="environments/stg";  KEY_NAME="stg_box_key.pem";     EXPECTED_IP="34.254.119.146" ;;
 esac
 
 INFRA_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_TF="$INFRA_DIR/$TF_DIR"
 KEY="$INFRA_DIR/$KEY_NAME"
 
+if [ "$PLAN" = "1" ]; then
+  echo "dev-apply-sql.sh PLAN — nothing is connected to or run"
+  echo "  target      = $TARGET"
+  echo "  tf dir      = $DEV_TF"
+  echo "  ssh key     = $KEY ($( [ -f "$KEY" ] && echo present || echo 'absent — would be written from terraform output -raw private_key_pem' ))"
+  echo "  expected ip = $EXPECTED_IP (asserted against terraform output -raw static_ip before any ssh)"
+  echo "  file        = $SQL_FILE ($(wc -l < "$SQL_FILE" | tr -d ' ') lines)  dry_run=$DRY_RUN"
+  exit 0
+fi
+
 # Every command this script runs is printed first (the JIG-010 evidence rule).
 run() { echo "\$ $*"; "$@"; }
 
 echo "==> Resolving box address (terraform -chdir=$DEV_TF output -raw static_ip)"
 IP="$(terraform -chdir="$DEV_TF" output -raw static_ip)"
+if [ "$IP" != "$EXPECTED_IP" ]; then
+  echo "error: terraform says $TF_DIR static_ip=$IP, expected $EXPECTED_IP for target '$TARGET' — wrong root or the box moved; refusing." >&2
+  exit 1
+fi
 echo "    target=$TARGET  tf=$TF_DIR  ip=$IP  file=$SQL_FILE  dry_run=$DRY_RUN"
 
 if [ ! -f "$KEY" ]; then
