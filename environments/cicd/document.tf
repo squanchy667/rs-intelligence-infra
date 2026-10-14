@@ -30,11 +30,19 @@ locals {
     rsync -a --delete incoming/out/ /opt/dara/out/
     cp incoming/docker-compose.yml /opt/dara/docker-compose.yml
     cp incoming/Caddyfile /opt/dara/Caddyfile
+    # JIG-101 B3: .env holds secrets; keep it (and its backups) 600 root:root.
+    # umask is scoped to this block so out/, Caddyfile, compose keep their modes.
+    old_umask=$(umask); umask 077
     touch .env
     (grep -v -e '^ENV_LABEL=' -e '^GIT_SHA=' -e '^UI_GIT_SHA=' -e '^SV_TAG=' .env || true) > .env.tmp
     cat incoming/stamps.env >> .env.tmp
-    mv .env.tmp .env
+    install -m 600 -o root -g root .env.tmp .env
+    rm -f .env.tmp
+    for f in .env.bak*; do [ -e "$f" ] || continue; chown root:root "$f"; chmod 600 "$f"; done
+    umask "$old_umask"
     gunzip -c incoming/api-image.tar.gz | docker load
+    # JIG-101 B5: custom Caddy image (rate_limit), shipped in the bundle when present.
+    if [ -f incoming/caddy-image.tar.gz ]; then gunzip -c incoming/caddy-image.tar.gz | docker load; fi
     SITE_ADDRESS="{{SiteAddress}}" docker compose up -d
     rm -rf incoming bundle.tar.gz
     docker image prune -f >/dev/null 2>&1 || true
