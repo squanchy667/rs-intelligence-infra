@@ -48,7 +48,17 @@ locals {
     docker image prune -f >/dev/null 2>&1 || true
     i=0
     while [ $i -lt 30 ]; do
-      if curl -fsSk --resolve "{{CanonicalHost}}:443:127.0.0.1" "https://{{CanonicalHost}}/api/health" >/dev/null 2>&1; then exit 0; fi
+      if curl -fsSk --resolve "{{CanonicalHost}}:443:127.0.0.1" "https://{{CanonicalHost}}/api/health" >/dev/null 2>&1; then
+        # JIG-101 FIX-G: anonymous /api/health is trimmed (A9) and CI holds no
+        # password. Report what is running from the box itself: docker inspect
+        # of the api container -> ENV_LABEL, stamped GIT_SHA and the image's
+        # OCI revision label (build-bundle.sh). Only these 3 values are printed;
+        # the rest of Config.Env (secrets) never leaves python. ssm-deploy.sh
+        # reads this line from StandardOutputContent for health-gate.sh.
+        cid=$(docker compose ps -q api || true)
+        docker inspect "$cid" 2>/dev/null | python3 -c 'import json,sys; c=json.load(sys.stdin)[0]["Config"]; e=dict(x.split("=",1) for x in c.get("Env") or []); l=c.get("Labels") or dict(); print("DARA_HEALTH_DETAIL " + json.dumps(dict(env=e.get("ENV_LABEL",""), git_sha=e.get("GIT_SHA",""), image_revision=l.get("org.opencontainers.image.revision",""))))' || echo "DARA_HEALTH_DETAIL_UNAVAILABLE"
+        exit 0
+      fi
       i=$((i+1)); sleep 5
     done
     echo "health probe failed" >&2
